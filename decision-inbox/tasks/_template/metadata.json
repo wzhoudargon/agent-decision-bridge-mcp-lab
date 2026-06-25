@@ -1,0 +1,25 @@
+{
+  "task_id": "_template",
+  "title": "Template Decision Task",
+  "status": "draft",
+  "created_at": "YYYY-MM-DDTHH:MM:SSZ",
+  "updated_at": "YYYY-MM-DDTHH:MM:SSZ",
+  "created_by": "codex",
+  "advisor_rounds": 0,
+  "risk_level": "low",
+  "allowed_inputs": [
+    "metadata.json",
+    "package.md",
+    "advice/*.md",
+    "fact-check-requests/*.md"
+  ],
+  "disallowed_inputs": [
+    "real project files",
+    "secrets",
+    "shell commands",
+    "Git operations",
+    "dependency installation",
+    "automatic implementation"
+  ],
+  "next_local_action": "Fill package.md, then expose only this task through the Decision Inbox MCP server."
+}

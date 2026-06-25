@@ -1,0 +1,40 @@
+# Secrets and local runtime
+.env
+.env.*
+*.pem
+*.key
+*.token
+
+# Node / Python local artifacts
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+
+# Logs and temp files
+*.log
+.DS_Store
+tmp/
+temp/
+
+# Local tunnel/config dumps
+ngrok.yml
+cloudflared/
+
+# Local thread/runtime notes
+NEXT_THREAD_PROMPT.md
+
+# Local marketing/export artifacts
+xhs-codex-external-agent/
+
+# Decision Inbox runtime data
+decision-inbox/level3-consultations/
+decision-inbox/tasks/*
+!decision-inbox/tasks/README.md
+!decision-inbox/tasks/_template/
+!decision-inbox/tasks/_template/**
+!decision-inbox/tasks/phase-1-package-only-mcp-review/
+!decision-inbox/tasks/phase-1-package-only-mcp-review/**

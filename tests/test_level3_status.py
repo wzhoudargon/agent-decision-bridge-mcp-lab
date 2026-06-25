@@ -1,0 +1,75 @@
+import subprocess
+import sys
+import unittest
+from pathlib import Path
+from unittest import mock
+
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import level3_status
+
+
+class Level3StatusTests(unittest.TestCase):
+    def test_reports_gate_session_and_funnel_status(self):
+        session = subprocess.CompletedProcess(
+            args=["python", "full_agent_session.py", "status"],
+            returncode=1,
+            stdout=(
+                "Current state: full_agent_session_closed\n"
+                "Risk coefficient now: 2/5 if persistent OAuth state remains, otherwise 1/5\n"
+            ),
+        )
+        funnel = subprocess.CompletedProcess(
+            args=["tailscale", "funnel", "status"],
+            returncode=0,
+            stdout="No serve config\n",
+        )
+
+        with mock.patch.object(level3_status, "run_status", side_effect=[session, funnel]):
+            with mock.patch.object(sys, "argv", [
+                "level3_status.py",
+                "--advisor-channel",
+                "browser-automation",
+                "--advisor-health",
+                "needs-browser-restart",
+            ]):
+                with mock.patch("builtins.print") as print_:
+                    status = level3_status.main()
+
+        self.assertEqual(status, 2)
+        output = print_.call_args.args[0]
+        self.assertIn("Level 3 product status:", output)
+        self.assertIn("Can use now: not yet.", output)
+        self.assertIn("Exposure now: closed.", output)
+        self.assertIn(
+            "Normal flow: prepare -> GPT-5.5 Thinking with connector -> capture -> 20-minute idle close.",
+            output,
+        )
+        self.assertIn("Level 3 readiness:", output)
+        self.assertIn("Current state: waiting_for_advisor_channel", output)
+        self.assertIn("restart the browser after user confirmation", output)
+        self.assertIn("Current state: full_agent_session_closed", output)
+        self.assertIn("No serve config", output)
+
+    def test_summary_reports_ready_to_open(self):
+        summary = level3_status.summarize_state(
+            "Current state: full_agent_session_closed\n",
+            "No serve config\n",
+            "\n".join(
+                [
+                    "Current state: ready_to_open_full_agent",
+                    "Requested mode: full-agent",
+                    "Risk if opened: 5/5",
+                ]
+            ),
+        )
+
+        self.assertIn("Can use now: yes", summary)
+        self.assertIn("short 5/5 task window", summary)
+        self.assertIn("Exposure now: closed.", summary)
+
+
+if __name__ == "__main__":
+    unittest.main()

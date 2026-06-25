@@ -1,0 +1,25 @@
+{
+  "task_id": "phase-1-package-only-mcp-review",
+  "title": "Package-only Decision Inbox MCP v1 before read-only project access",
+  "status": "package_ready",
+  "created_at": "2026-06-18T00:00:00Z",
+  "updated_at": "2026-06-18T00:00:00Z",
+  "created_by": "codex",
+  "advisor_rounds": 0,
+  "risk_level": "low",
+  "allowed_inputs": [
+    "metadata.json",
+    "package.md",
+    "advice/*.md",
+    "fact-check-requests/*.md"
+  ],
+  "disallowed_inputs": [
+    "real project files",
+    "secrets",
+    "shell commands",
+    "Git operations",
+    "dependency installation",
+    "automatic implementation"
+  ],
+  "next_local_action": "Use this package for the first external advisor round after connector setup."
+}

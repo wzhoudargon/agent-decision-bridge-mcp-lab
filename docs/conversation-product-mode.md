@@ -1,0 +1,310 @@
+# Conversation Product Mode
+
+This document defines the user-facing behavior for `agent-decision-bridge` when
+the user asks in natural language, for example:
+
+```text
+Use Level 3 to consult GPT Pro about whether this skill is good enough.
+```
+
+## Product Promise
+
+The skill should behave like a conversation product:
+
+1. understand the requested tier,
+2. prepare the right decision context,
+3. open only the minimum required connector window,
+4. ask the advisor through an actually available channel,
+5. import the result,
+6. classify material recommendations as `Adopt`, `Ask`, or `Reject`,
+7. close public windows after the task or idle timeout.
+
+It must not pretend that an advisor was called when the advisor channel is not
+available in the current Codex conversation.
+
+## Critical Distinction
+
+Full-Agent is an inbound connector:
+
+```text
+ChatGPT Web -> MCP connector -> local Full-Agent tools
+```
+
+It is not, by itself, an outbound GPT Pro API for Codex:
+
+```text
+Codex -> GPT Pro Web model
+```
+
+Therefore a Level 3 request needs both:
+
+- a Full-Agent session if ChatGPT Web should inspect or operate on the local
+  workspace,
+- an advisor channel that lets the request reach ChatGPT Web.
+
+If no advisor channel is available, Codex must say so and stop at
+`waiting_for_advisor_channel`.
+
+## Advisor Channels
+
+`direct-tool`
+
+- A callable advisor connector/API is visible to Codex in the current
+  conversation.
+- Codex can complete the loop without user copy-paste.
+
+`browser-automation`
+
+- The user explicitly authorizes browser/computer automation.
+- Codex may operate ChatGPT Web for the user.
+- The user should not use the computer while automation is controlling the UI.
+
+`user-web`
+
+- The user triggers the ChatGPT Web conversation manually.
+- Codex prepares exact prompts, keeps the local connector/session ready, then
+  imports the result.
+
+`manual`
+
+- Ask First package/advice exchange.
+- Safest fallback, risk `1/5`.
+
+`unknown`
+
+- Codex cannot see a usable advisor channel.
+- Codex must not claim the consultation has happened.
+
+## Tier Behavior
+
+Level 1: Ask First
+
+- Create or summarize a self-contained package.
+- No public connector.
+- Risk `1/5`.
+- User manually sends package and returns advice.
+
+Level 2: Read-Only Project Advisor
+
+- Do not create a decision package.
+- Use `--mode read-only-project`.
+- Let ChatGPT Web directly list/read/search allowed project content.
+- Tools: `open_workspace`, `ls`, `read`, `grep`, `glob`.
+- High-risk credential paths are blocked by the server; other task-relevant
+  project files may be inspected.
+- No writes.
+- No shell.
+- Risk `3/5-4/5`.
+- If advisor channel is unavailable, wait for `user-web` or browser automation
+  authorization.
+
+Level 3: Full-Agent Consult Session
+
+- Open `scripts/full_agent_session.py` only after explicit Level 3 request.
+- Require at least one allowed root.
+- Risk `5/5` while online.
+- Run an advisor-channel health gate before opening the `5/5` session:
+  confirm that ChatGPT Web is actually reachable through `direct-tool`,
+  `browser-automation`, or `user-web`.
+- Keep session online only during the current Codex task.
+- Touch after active consult steps.
+- Auto-close 20 minutes after the last Level 3 use.
+- Use a separate Full-Agent connector/scope from Auto MCP.
+- Use GPT-5.5 Thinking for ChatGPT Web connector calls. Do not use
+  GPT-5.5 Pro for MCP/App connector work because Pro models do not expose
+  ChatGPT Apps/MCP tools.
+- If ChatGPT Web cannot be reached by Codex, report
+  `waiting_for_advisor_channel` and do not create a fake manual success.
+- For product-review consultations, begin with an inspect-first prompt even
+  though the connector has broader tools. `write`, `edit`, and `bash` remain
+  available Full-Agent capabilities, but each such action must ask the user to
+  approve the exact file or command, intended change, and risk before tool use.
+  Prefer `scripts/level3_consultation_prompt.py`.
+- The default prompt lets ChatGPT Web choose task-relevant files under the
+  allowed root and requires it to report exactly what was listed, searched,
+  read, denied, or failed. Use `--file` only for a targeted fixed-file round.
+
+## Level 3 Health Gate
+
+Before opening a public Full-Agent window, Codex must establish the advisor
+channel:
+
+1. `direct-tool`: verify that a callable advisor/model channel is available.
+2. `browser-automation`: verify that ChatGPT Web has an interactive prompt box
+   or a visible conversation that can receive a prompt.
+3. `user-web`: give the user one short prompt and wait for the user to confirm
+   that ChatGPT Web is ready.
+
+Do not open the Full-Agent session while the only known state is a blank
+ChatGPT page, browser automation timeout, stale connector page, or unknown web
+advisor state. In that case report:
+
+```text
+Current state: waiting_for_advisor_channel
+Requested mode: full-agent
+Full-Agent session: not_open
+Risk if opened: 5/5
+Reason: ChatGPT Web is not currently reachable as an advisor channel.
+Next options: restart/restore the browser, user triggers ChatGPT Web manually,
+or fall back to Ask First.
+```
+
+If browser automation cannot access the browser window or the browser shows a
+pending restart/update state, report `advisor-health=needs-browser-restart` and
+ask for user confirmation before restarting the browser. Do not restart the
+browser as an unprompted recovery step, because it can affect open tabs and
+unsaved web input.
+
+Once the advisor channel is healthy, Codex opens the Full-Agent window, performs
+the consultation, imports the result, classifies recommendations, and lets the
+watchdog close the session 20 minutes after the last Level 3 use unless the
+user explicitly asks to close sooner.
+
+When the user or browser automation brings the ChatGPT Web answer back, capture
+it before local review:
+
+```bash
+python3 scripts/level3_consultation_flow.py capture \
+  --advisor chatgpt-web-full-agent \
+  "<original Level 3 question>"
+```
+
+This stores the answer under `decision-inbox/level3-consultations/` and renders
+a review-only gate. It does not execute advisor instructions. The `capture`
+action refreshes the idle timer after saving the advice; the session remains
+open until 20 minutes after the last Level 3 use by default.
+
+## Local Helper
+
+Use package preparation only for Level 1 or legacy package-only Auto MCP:
+
+```bash
+python3 scripts/prepare_consultation.py \
+  --mode ask-first \
+  --advisor-channel unknown \
+  "Review whether this skill is ready and what to optimize next."
+```
+
+The helper creates a package task:
+
+```text
+decision-inbox/tasks/<task-id>/metadata.json
+decision-inbox/tasks/<task-id>/package.md
+decision-inbox/tasks/<task-id>/advice/
+decision-inbox/tasks/<task-id>/fact-check-requests/
+```
+
+Do not use this helper for Level 2 or Level 3. Those tiers expose workspace MCP
+tools directly and do not generate decision packages.
+
+Use the side-effect-free product gate before opening Level 2 or Level 3:
+
+```bash
+python3 scripts/conversation_product_gate.py \
+  --mode full-agent \
+  --advisor-channel browser-automation \
+  --advisor-health ready
+```
+
+If the gate returns `waiting_for_advisor_channel`, do not open the public MCP
+window yet. Restore ChatGPT Web, wait for the user to trigger `user-web`, or
+fall back to Ask First.
+
+For Level 3 user-facing status, prefer the combined readiness command:
+
+```bash
+python3 scripts/level3_status.py \
+  --advisor-channel browser-automation \
+  --advisor-health needs-browser-restart
+```
+
+This command does not open Full-Agent. It reports the product readiness gate,
+current Full-Agent session state, and current Tailscale Funnel state together.
+
+For the normal user-facing Level 3 consultation path, prefer the bounded flow
+wrapper:
+
+```bash
+python3 scripts/level3_consultation_flow.py prepare \
+  --allowed-root "$PWD" \
+  --public-base-url "https://your-public-host.example.com" \
+  --advisor-channel user-web \
+  --advisor-health ready \
+  "Review whether this project is ready for Level 3 use."
+```
+
+The wrapper checks advisor readiness, opens the Full-Agent session, runs public
+health checks, copies the compact ChatGPT Web prompt, and refuses to continue
+if the public health result is not `stable`. It no longer assumes browser
+automation is ready by default; Codex must explicitly pass `user-web`,
+`browser-automation`, or `direct-tool` with `advisor-health=ready` before the
+`5/5` window opens. The default timing is conservative for Tailscale Funnel task
+windows: 30 second public warmup, 30 second preflight timeout, six open-time
+preflight attempts, and five public-health probes. If the first public health
+result is `intermittent`, the wrapper runs one extra full health check before
+giving up; `failed` still closes immediately. After advice returns, use the
+same wrapper to capture the answer and refresh the 20-minute idle window:
+
+```bash
+python3 scripts/level3_consultation_flow.py capture \
+  --advisor chatgpt-web-full-agent \
+  "<original Level 3 question>"
+```
+
+Use `python3 scripts/level3_consultation_flow.py close` only when stopping
+before advice has been captured or when the user explicitly wants immediate
+shutdown.
+
+For the ChatGPT Web prompt after the connector chip is visible, prefer:
+
+```bash
+python3 scripts/level3_consultation_prompt.py \
+  --allowed-root "$PWD" \
+  --clipboard \
+  "Review whether this project is ready for Level 3 use."
+```
+
+The generated prompt tells ChatGPT to use GPT-5.5 Thinking rather than
+GPT-5.5 Pro for connector access, use only the Full-Agent connector, avoid
+Python/browser file checks, inspect before acting, ask for user approval before
+write/edit/bash, choose task-relevant project files under the allowed root,
+avoid high-risk credential paths, and report
+`Adopt`, `Ask`, and `Reject` recommendations. Use `--deep` or explicit `--file`
+only for a targeted fixed-file round. The `--clipboard` flag copies the prompt
+locally so browser automation or the user can paste it into ChatGPT without
+manually selecting terminal output.
+
+If browser automation cannot paste or send the prompt reliably, do not leave
+the `5/5` Full-Agent window open while retrying indefinitely. Either use a
+short user-web handoff where the user presses send in ChatGPT Web, or close the
+window and report `waiting_for_advisor_channel`.
+
+For ordinary users, the expected handoff text is:
+
+```text
+Open ChatGPT Web with GPT-5.5 Thinking selected and the Full-Agent connector attached.
+Paste and send the copied prompt.
+When ChatGPT finishes, paste the answer back into Codex.
+Codex will classify the advice as Adopt / Ask / Reject.
+```
+
+Codex should then capture the pasted answer with
+`scripts/level3_consultation_flow.py capture` before doing the local
+Adopt / Ask / Reject review.
+
+## Failure Wording
+
+Use direct wording when the loop cannot be completed:
+
+```text
+Current state: waiting_for_advisor_channel
+Requested mode: full-agent
+Full-Agent session: ready/not_open/failed
+Risk if opened: 5/5
+Reason: Codex does not currently have a callable GPT Pro Web advisor channel.
+Next options: user triggers ChatGPT Web manually, authorize browser automation,
+or fall back to Ask First.
+```
+
+Do not say the advisor reviewed the package unless advice was actually returned
+through MCP, browser automation, a direct advisor tool, or pasted user evidence.

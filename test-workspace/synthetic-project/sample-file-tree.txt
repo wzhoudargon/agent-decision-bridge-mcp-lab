@@ -1,0 +1,4 @@
+synthetic-project/
+├── sample-project-notes.md
+├── sample-file-tree.txt
+└── sample-open-question.md
