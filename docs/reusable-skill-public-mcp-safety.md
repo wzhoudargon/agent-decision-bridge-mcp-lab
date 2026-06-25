@@ -118,6 +118,27 @@ OAuth scope: full-agent
 separate ChatGPT connector from Read-Only Project Advisor
 ```
 
+Public endpoint rule:
+
+```text
+users bring their own public HTTPS endpoint
+the skill must not provide one shared maintainer domain for all users
+```
+
+Endpoint guidance:
+
+| Option | Use when | Main strength | Main risk/tradeoff |
+|---|---|---|---|
+| Tailscale Funnel | The user has no domain and wants short verified task windows | No domain purchase; repeatable `.ts.net` hostname; easy close/reset | Local Tailscale health, DNS, proxy, and OS settings can make it intermittent |
+| Cloudflare Quick Tunnel | One-off smoke tests | Free, fast, no domain setup | Random hostname; not durable for ChatGPT connector reuse |
+| Cloudflare Named Tunnel | Stable repeated connector use | User-owned stable hostname and mature tunnel controls | Requires a Cloudflare account plus user-owned domain setup |
+| ngrok / Pinggy | Temporary developer tests | Quick public HTTPS exposure | Stable URLs and policy controls depend on provider/tier |
+| Custom HTTPS reverse proxy | Advanced users or teams | Full control over TLS/auth/logging/network policy | Requires secure ops setup |
+
+Do not encourage users to share a single maintainer-owned tunnel/domain. That
+would convert a local skill into a hosted broker and centralize other users'
+local-machine access risk.
+
 If query-string token auth is required, raise risk:
 
 ```text

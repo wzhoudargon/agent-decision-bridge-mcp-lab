@@ -19,10 +19,13 @@ Level 1: Manual Package
 - No public MCP exposure.
 - Codex creates a package and the user sends it manually.
 - Risk: `1/5`.
+- Does not require Tailscale, Cloudflare, ngrok, or any public tunnel.
 
 Level 2: Read-Only Project Advisor
 
 - ChatGPT Web may list, read, and search an allowed project root.
+- Requires a user-provided public HTTPS endpoint when ChatGPT Web should call
+  the local MCP tools.
 - It must not write files or run commands.
 - High-risk credential paths are denied by the server: `.env*`, `.git`, SSH
   and cloud credential directories, private-key material, and known
@@ -34,12 +37,23 @@ Level 3: Full-Agent Execution
 
 - ChatGPT Web may receive file read/write/edit/search and shell tools inside an
   explicit allowed root.
+- Requires a user-provided public HTTPS endpoint for ChatGPT Web connector use.
 - Connector calls should be run with GPT-5.5 Thinking selected. GPT-5.5 Pro
   should not be used for MCP/App connector work because Pro models do not expose
   these tools.
 - It is not a sandbox; command execution has the local user's permissions.
 - It must run only inside a short task window and close after idle timeout.
 - Risk while online: `5/5`.
+
+## Public Endpoint Policy
+
+Users bring their own public HTTPS endpoint for connector tiers. Supported
+deployment choices include Tailscale Funnel, Cloudflare Tunnel, ngrok, Pinggy,
+or a user-managed HTTPS reverse proxy.
+
+This project must not provide one shared public domain for multiple users'
+local machines. Shared routing would centralize security, privacy, uptime, and
+abuse risk in the maintainer's account.
 
 ## Level 3 Consultation Defaults
 

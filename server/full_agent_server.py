@@ -464,9 +464,11 @@ def handle_request(
 
 
 def _call_tool(params: Dict[str, Any], manager: FullAgentWorkspaceManager) -> Dict[str, Any]:
+    if not isinstance(params, dict):
+        return _tool_error("Invalid tool call params: expected object")
     name = params.get("name")
-    arguments = params.get("arguments") or {}
     try:
+        arguments = _arguments_dict(params.get("arguments"))
         if name not in manager.tool_names:
             return _tool_error(f"Tool is not available in {manager.profile} mode: {name}")
         if name == "open_workspace":
@@ -579,6 +581,25 @@ def _required_string(arguments: Dict[str, Any], name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"Missing required string argument: {name}")
     return value
+
+
+def _arguments_dict(value: Any) -> Dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return {}
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Invalid JSON string for tool arguments: {exc.msg}") from exc
+        if isinstance(parsed, dict):
+            return parsed
+        raise ValueError("Tool arguments JSON string must decode to an object")
+    raise TypeError("Tool arguments must be an object")
 
 
 def _require_strings(arguments: Dict[str, Any], names: List[str]) -> None:

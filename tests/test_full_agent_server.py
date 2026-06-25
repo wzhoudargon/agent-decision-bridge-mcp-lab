@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 from server import full_agent_server as srv
@@ -152,6 +153,41 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
 
         self.assertTrue(response["result"]["isError"])
         self.assertIn("Access denied", response["result"]["content"][0]["text"])
+
+    def test_jsonrpc_accepts_json_string_tool_arguments(self):
+        response = srv.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "tools/call",
+                "params": {
+                    "name": "open_workspace",
+                    "arguments": json.dumps({"path": str(self.root)}),
+                },
+            },
+            self.manager,
+        )
+
+        self.assertFalse(response["result"]["isError"])
+        self.assertEqual(
+            Path(response["result"]["structuredContent"]["root"]),
+            self.root.resolve(),
+        )
+
+    def test_jsonrpc_bad_tool_params_returns_tool_error_not_internal_error(self):
+        response = srv.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 6,
+                "method": "tools/call",
+                "params": "not an object",
+            },
+            self.manager,
+        )
+
+        self.assertNotIn("error", response)
+        self.assertTrue(response["result"]["isError"])
+        self.assertIn("Invalid tool call params", response["result"]["content"][0]["text"])
 
     def test_read_only_project_profile_exposes_only_read_tools_and_blocks_secrets(self):
         manager = srv.FullAgentWorkspaceManager(

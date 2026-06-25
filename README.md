@@ -57,6 +57,43 @@ The important boundary: GPT-5.5 Pro is strongest for the manual deep-consulting
 path, while MCP/App connector work should use GPT-5.5 Thinking because Pro
 models do not expose connector tools in the current ChatGPT product.
 
+## Public HTTPS URL Policy
+
+This project does not create or provide a shared public tunnel/domain for other
+users. Each user must supply their own public HTTPS endpoint when they want
+ChatGPT Web to call local MCP tools.
+
+By tier:
+
+- **Ask First** does not need Tailscale, Cloudflare, ngrok, or any public
+  tunnel.
+- **Read-Only Project Advisor** needs a public HTTPS endpoint only when
+  ChatGPT Web should directly list/read/search the user's local project.
+- **Full-Agent Execution** needs a public HTTPS endpoint for ChatGPT Web
+  connector use, because the web app must reach the local Full-Agent MCP
+  server.
+
+Supported endpoint choices are deliberately bring-your-own-provider:
+Tailscale Funnel, Cloudflare Tunnel, ngrok, Pinggy, or a user-managed HTTPS
+reverse proxy. For short tests, Tailscale Funnel or Cloudflare Quick Tunnel can
+be enough. For repeated stable connector use, prefer a user-owned domain with
+Cloudflare Named Tunnel or another stable HTTPS reverse proxy.
+
+Endpoint choice guide:
+
+| Option | When to use | Main advantage | Main tradeoff |
+|---|---|---|---|
+| Tailscale Funnel | No owned domain, short verified task windows | Stable `.ts.net` URL after login; easy to close | Can be affected by local Tailscale health, DNS, proxy, or Screen Time issues |
+| Cloudflare Quick Tunnel | Temporary tests | Fast and free without domain setup | Random hostname, not suitable as a durable ChatGPT connector |
+| Cloudflare Named Tunnel | Repeated stable connector use | Stable hostname on the user's own domain; strong tunnel/DNS management | Requires a Cloudflare account and user-owned domain setup |
+| ngrok | Developer tests or paid reserved endpoint | Simple CLI and diagnostics | Stable URLs often require paid/reserved setup |
+| Pinggy | Lightweight one-off tunnel | Quick temporary exposure | Less suited to polished long-term product use |
+| Custom HTTPS reverse proxy | Advanced users/teams | Full control over TLS, auth, logs, and network policy | Requires ops knowledge and careful configuration |
+
+Do not route multiple users through the maintainer's domain or tunnel. That
+would turn this lab into a hosted broker for other people's local machines and
+would centralize security, privacy, uptime, and abuse risk in one account.
+
 ## What This Is Not
 
 - Not an always-on remote shell.
@@ -276,9 +313,11 @@ without borrowing its broad workspace permissions:
 - default Full-Agent OAuth persistence outside the repo for repeated runs,
   with local reset support,
 - keep short-lived bearer tokens only for local or temporary compatibility tests,
-- prefer a stable public URL for repeated ChatGPT connector runs,
+- require users to bring their own public HTTPS URL for Level 2 and Level 3
+  connector runs,
+- prefer a stable user-owned public URL for repeated ChatGPT connector runs,
 - run `python3 scripts/decision_inbox_doctor.py` before exposing the endpoint,
-- use the verified Tailscale Funnel endpoint when a stable no-owned-domain URL is needed.
+- use a user-provided Tailscale Funnel endpoint when a stable no-owned-domain URL is needed.
 - run `python3 scripts/decision_inbox_preflight.py` before asking ChatGPT Web to call tools,
 - manage the public window with `scripts/decision_inbox_tunnel_window.py open/status/close`
   when using Tailscale Funnel.

@@ -150,9 +150,15 @@ Role:
 Not role:
 
 - not an account-side ChatGPT app manager,
-- not a tunnel provider,
+- not a shared tunnel provider,
 - not a permission expansion beyond Decision Inbox unless Full-Agent is
   explicitly selected.
+
+For Level 2 and Level 3 ChatGPT Web connector use, the user supplies the public
+HTTPS endpoint. The project can validate a public base URL and manage local
+task windows, but it does not provide a shared domain for other users' local
+machines. Acceptable transports include Tailscale Funnel, Cloudflare Tunnel,
+ngrok, Pinggy, or a user-managed HTTPS reverse proxy.
 
 For repeated ChatGPT Web testing, prefer a stable public URL. Temporary tunnel
 URLs are acceptable for one-off tests, but changing the URL usually requires an

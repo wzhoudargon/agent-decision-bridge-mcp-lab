@@ -1,0 +1,4 @@
+interface:
+  display_name: "codex外接最强助理"
+  short_description: "把 ChatGPT 网页端变成 Codex 的外部 Agent"
+  default_prompt: "Use $agent-decision-bridge to prepare a focused decision package for another AI agent, or to verify and execute advice from one."

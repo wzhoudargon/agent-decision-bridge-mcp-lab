@@ -63,6 +63,48 @@ https://your-stable-or-temporary-host.example.com/mcp
 Do not put `/mcp`, query tokens, fragments, or paths in
 `DECISION_INBOX_PUBLIC_BASE_URL`.
 
+## Bring-Your-Own Public Endpoint
+
+This lab does not create a shared public domain or tunnel for users. The
+ChatGPT account-side connector must point at a public HTTPS URL that the user
+controls for their own machine.
+
+Practical choices:
+
+| Option | Best use | Strengths | Tradeoffs |
+|---|---|---|---|
+| Tailscale Funnel | Users with no domain who want a repeatable short task window | No domain purchase required; stable `.ts.net` hostname after login; easy to close with `tailscale funnel reset`; good fit for this lab's 20-minute task window | Can be sensitive to local Tailscale health, DNS, proxy, and macOS Screen Time issues; not ideal as an always-on production endpoint |
+| Cloudflare Quick Tunnel | Temporary smoke tests | Free; no domain setup; fast way to check whether an HTTPS tunnel path works | Random `trycloudflare.com` hostname changes; not a good long-term ChatGPT connector URL; weaker ownership and lifecycle clarity |
+| Cloudflare Named Tunnel | Repeated stable connector use | Stable hostname on the user's domain; strong DNS/Tunnel management; good production-like path; no inbound router port forwarding | Requires a Cloudflare account and a user-owned domain connected to Cloudflare; initial login/origin cert setup is more involved |
+| ngrok | Developer-friendly temporary or reserved endpoint | Simple CLI; good diagnostics; can reserve stable domains on paid plans | Free URLs usually change; paid features may be needed for stable use; external account/provider policy applies |
+| Pinggy | Lightweight quick public SSH/tunnel path | Fast one-off exposure; useful when the user already knows the service | Stability and policy depend on the service tier; less ideal for a polished reusable product path |
+| Custom HTTPS reverse proxy | Advanced users and teams | Full control over domain, TLS, auth, logs, and network policy | Requires ops knowledge; misconfiguration can create high-risk exposure |
+
+Recommended defaults:
+
+- **No connector / safest**: Ask First, no public endpoint.
+- **No owned domain, short task window**: Tailscale Funnel.
+- **Stable repeated connector**: Cloudflare Named Tunnel on the user's own
+  domain.
+- **Temporary troubleshooting**: Cloudflare Quick Tunnel, ngrok, or Pinggy.
+
+By tier:
+
+- Manual Package needs no tunnel.
+- Read-Only Project Advisor needs a tunnel only when ChatGPT Web directly reads
+  the local project through MCP.
+- Full-Agent Execution needs a tunnel for ChatGPT Web connector use and remains
+  risk `5/5` while online.
+
+Do not route other users through the maintainer's own domain or tunnel. A
+shared domain would make the maintainer a broker for other people's local
+machines and would centralize security, privacy, uptime, and abuse risk in one
+account.
+
+This mirrors the DevSpace-style expectation: the tool can run a local MCP
+server and validate a public base URL, but the public HTTPS transport is a
+user-provided deployment choice.
+
 ## Stable Connector Run With OAuth Owner Password
 
 Use this for repeated ChatGPT connector tests. This is the preferred path
