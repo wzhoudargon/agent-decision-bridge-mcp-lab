@@ -9,8 +9,8 @@ run commands, change Git state, install dependencies, or implement its own
 recommendations.
 
 Connected Agent does not use this package protocol as its primary context path.
-It uses `connected-agent` workspace tools with approval gates and session-only
-Danger Auto.
+It uses `connected-agent` workspace tools with one-action approval gates and a
+session-only hidden danger switch.
 
 ## Task Directory
 
@@ -136,7 +136,8 @@ Current local implementation:
 - `server/decision_inbox_store.py`: validates task ids, reads package/metadata, writes advice and fact-check requests.
 - `server/decision_inbox_server.py`: exposes the legacy package/advice/status tools over stdio JSON-RPC.
 - `server/full_agent_server.py`: exposes Connected Agent workspace tools,
-  approval gates, Danger Auto, and deprecated read-only/full-agent profiles.
+  one-action approval gates, the hidden danger switch, and deprecated
+  read-only/full-agent profiles.
 - `server/decision_inbox_http_server.py`: exposes legacy Auto MCP by default,
   routes to Connected Agent with `--mode connected-agent`, and keeps
   deprecated `read-only-project` / `full-agent` aliases. The HTTP wrapper

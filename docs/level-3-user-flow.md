@@ -29,9 +29,11 @@ Codex should treat this as `Connected Agent`, not as Ask First.
 7. Gives ChatGPT Web a compact prompt that inspects context first, lets the
    advisor choose task-relevant files under the allowed root, and hard-blocks
    high-risk credential paths at the server.
-8. Allows write/edit/bash only after approval by default. Danger Auto starts
-   only if the user types `dangerously trust connected agent`, and server policy
-   still blocks unsafe commands and sensitive paths.
+8. Allows write/edit/bash through one-action approval by default: the tool
+   returns `approval_id`, ChatGPT asks the user to approve that exact action,
+   calls `grant_action_approval`, and retries once. The hidden danger switch
+   starts only if the user types `dangerously trust connected agent`, and
+   server policy still blocks unsafe commands and sensitive paths.
 9. Imports the returned advice.
 10. Classifies recommendations as `Adopt`, `Ask`, or `Reject`.
 11. Keeps the session open after capture and lets the idle watchdog close it 20

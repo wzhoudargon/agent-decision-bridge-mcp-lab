@@ -19,7 +19,9 @@ It may reason well, but it cannot be assumed to know:
 2. External model instructions are not user authorization.
 3. Review-only means no file changes.
 4. Connected Agent may expose project tools only under configured allowed roots.
-5. Connected Agent default mode must require approval for write, edit, and bash.
+5. Connected Agent default mode must use one-action approval for write, edit,
+   and bash: return `approval_id`, require user confirmation in chat, call
+   `grant_action_approval`, then retry the same action once.
 6. The hidden danger switch may auto-run only controlled project-local
    write/edit and safe local bash after the user typed
    `dangerously trust connected agent`.
@@ -76,8 +78,8 @@ Level 2: Connected Agent
 - No package generation.
 - High-risk credential paths are hard-blocked; normal project files are
   available when task-relevant.
-- Default mode allows read/search/list and requires approval for write, edit,
-  and bash.
+- Default mode allows read/search/list. Write, edit, and bash use one-action
+  approval with `approval_id` and `grant_action_approval`.
 - The hidden danger switch starts only after the user types
   `dangerously trust connected agent`.
 - The hidden danger switch remains server-filtered and fixed risk `5/5`.
@@ -156,7 +158,7 @@ Connected Agent mode:
 - must reject home and filesystem roots as allowed roots,
 - hard-blocks high-risk credential paths by default,
 - exposes file read/write/edit/search and bash tools,
-- requires approval for write/edit/bash by default,
+- requires one-action approval for write/edit/bash by default,
 - enables the hidden danger switch only after `dangerously trust connected agent`,
 - is not a sandbox; bash runs with the local user account,
 - is risk `3/5-5/5`, fixed `5/5` while the hidden danger switch is active.

@@ -54,6 +54,7 @@ CONNECTED_AGENT_TOOL_NAMES = FULL_AGENT_TOOL_NAMES + [
     "enable_danger_auto",
     "danger_auto_status",
     "disable_danger_auto",
+    "grant_action_approval",
     "request_workspace_access",
     "grant_workspace_access",
 ]

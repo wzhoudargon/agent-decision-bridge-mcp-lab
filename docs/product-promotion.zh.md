@@ -72,7 +72,7 @@ Codex 整理上下文 -> 手动复制到 ChatGPT -> 手动复制回答回来 -> 
 Ask First -> Connected Agent
 ```
 
-默认不是让网页端 AI 乱动你的电脑，而是在 Connected Agent 里保留审批阀门。另有一个隐藏危险开关：只有用户明确输入 `dangerously trust connected agent` 后，才会临时放宽部分项目内自动执行。
+默认不是让网页端 AI 乱动你的电脑，而是在 Connected Agent 里保留一次性审批阀门：写入、编辑、bash 会先返回 `approval_id`，用户在 ChatGPT Web 里确认该次动作后再执行。另有一个隐藏危险开关：只有用户明确输入 `dangerously trust connected agent` 后，才会临时放宽部分项目内自动执行。
 
 ## 两档权限
 
@@ -105,7 +105,7 @@ Codex 把问题整理成一个决策包，用户手动粘贴到 ChatGPT Web、Cl
 
 - 只能访问显式 allowed-root
 - 默认读/search/list 自动允许
-- write / edit / bash 默认需要审批
+- write / edit / bash 默认走一次性 `approval_id` 审批
 - 服务器硬拦截 `.env*`、`.git`、SSH/cloud 凭据、私钥、OAuth/token 状态文件等高风险路径
 
 风险：`3/5-5/5`
@@ -119,7 +119,7 @@ Codex 把问题整理成一个决策包，用户手动粘贴到 ChatGPT Web、Cl
 
 这不是正式档位，也不是公开产品模式。它只是 Connected Agent 内部的隐藏危险开关。
 
-当用户在 ChatGPT Web 里输入固定短语 `dangerously trust connected agent` 后，本次 session 会临时放宽：可以自动允许项目内写入、编辑和安全本地 bash。但服务器仍会拦截联网命令、桌面/浏览器控制、剪贴板、密钥路径、越界路径、依赖安装、Git remote 和大范围破坏性操作。
+正常写入不需要开启这个开关。默认路径是单次审批：工具返回 `approval_id`，用户确认该动作后，ChatGPT 调用 `grant_action_approval` 并重试一次。只有当用户在 ChatGPT Web 里输入固定短语 `dangerously trust connected agent` 后，本次 session 才会临时放宽：可以自动允许部分项目内写入、编辑和安全本地 bash。但服务器仍会拦截联网命令、桌面/浏览器控制、剪贴板、密钥路径、越界路径、依赖安装、Git remote 和大范围破坏性操作。
 
 适合：
 
@@ -219,7 +219,7 @@ codex外接最强助理是一个面向 Codex 的跨模型协作 Skill。它把 C
 - 把 GPT Pro 变成 Codex 的专职咨询推理专家
 - 把高消耗的架构评审、方案比较和安全判断分流到 ChatGPT Web
 - 默认安全：外部模型建议不是用户授权
-- Connected Agent 可让 ChatGPT Web 读取、搜索指定项目；写入、编辑、bash 默认需要审批
+- Connected Agent 可让 ChatGPT Web 读取、搜索指定项目；写入、编辑、bash 默认走一次性 `approval_id` 审批
 - 隐藏危险开关可临时放宽项目内自动写入/编辑/安全 bash，但固定风险 `5/5`
 - 本地硬拦截高风险凭据路径
 - 支持短窗口 MCP 暴露，当前默认 20 分钟 idle 关闭
@@ -254,7 +254,7 @@ This release turns the original manual `agent-decision-bridge` workflow into a s
 Highlights:
 
 - Level 1 Ask First: manual package/advice workflow with no MCP exposure.
-- Level 2 Connected Agent: ChatGPT Web can inspect allowed project roots through MCP; write/edit/bash require approval by default.
+- Level 2 Connected Agent: ChatGPT Web can inspect allowed project roots through MCP; write/edit/bash use one-action approval by default.
 - Hidden danger switch: session-only high-risk behavior enabled only by the exact user phrase `dangerously trust connected agent`; not an additional product tier.
 - Hard blocks for high-risk credential paths.
 - OAuth owner-password flow and persistent connector OAuth state outside the repo.

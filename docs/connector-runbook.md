@@ -341,6 +341,7 @@ bash
 enable_danger_auto
 danger_auto_status
 disable_danger_auto
+grant_action_approval
 request_workspace_access
 grant_workspace_access
 ```
@@ -354,7 +355,9 @@ files may be inspected by the advisor.
 Default behavior:
 
 - read/search/list are automatic inside opened allowed roots,
-- write/edit/bash return approval-required,
+- write/edit/bash return a one-action `approval_id`; after the user approves
+  that exact action in chat, call `grant_action_approval` and retry the
+  original tool call once with that `approval_id`,
 - outside roots require `request_workspace_access` and then
   `grant_workspace_access` after the user confirms in chat.
 
@@ -365,7 +368,7 @@ Hidden danger switch:
 - safe project-local write/edit and safe local bash may run automatically,
 - network, browser/desktop, clipboard, secret-path, path-escape, install, Git
   remote, and broad destructive command classes remain blocked or
-  approval-required,
+  one-action approval gated,
 - it closes after 20 minutes idle with the session helper.
 
 Risk coefficient: `3/5-5/5`; the hidden danger switch is fixed `5/5`.

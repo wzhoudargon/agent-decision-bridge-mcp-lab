@@ -110,7 +110,7 @@ hidden danger switch risk coefficient: 5/5
 OAuth scope: connected-agent
 tools: open_workspace, ls, read, write, edit, grep, glob, bash,
        enable_danger_auto, danger_auto_status, disable_danger_auto,
-       request_workspace_access, grant_workspace_access
+       grant_action_approval, request_workspace_access, grant_workspace_access
 ```
 
 Public endpoint rule:
@@ -188,8 +188,10 @@ Connector profile rule:
 
 - Ask First uses package files and does not need a workspace connector.
 - Connected Agent uses the `connected-agent` scope and one workspace connector.
-- Connected Agent default mode allows read/search/list and requires approval
-  before write/edit/bash.
+- Connected Agent default mode allows read/search/list and uses one-action
+  approval before write/edit/bash: the tool returns `approval_id`, the user
+  approves the exact action in chat, then ChatGPT calls `grant_action_approval`
+  and retries the same action once.
 - `dangerously trust connected agent` is not a separate connector or product
   tier. It is a session-only hidden danger switch inside Connected Agent,
   enabled only after the user types that exact phrase, and is always risk

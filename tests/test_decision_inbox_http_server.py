@@ -545,6 +545,7 @@ class DecisionInboxHttpServerTests(unittest.TestCase):
                     "enable_danger_auto",
                     "danger_auto_status",
                     "disable_danger_auto",
+                    "grant_action_approval",
                     "request_workspace_access",
                     "grant_workspace_access",
                 ],
@@ -582,20 +583,25 @@ class DecisionInboxHttpServerTests(unittest.TestCase):
             )
             self.assertTrue(denied["result"]["isError"])
             self.assertEqual(denied["result"]["structuredContent"]["error"], "approval_required")
-            enabled = self._post_json(
+            approval_id = denied["result"]["structuredContent"]["approval_id"]
+            granted = self._post_json(
                 base,
                 {
                     "jsonrpc": "2.0",
                     "id": 43,
                     "method": "tools/call",
                     "params": {
-                        "name": "enable_danger_auto",
-                        "arguments": {"phrase": "dangerously trust connected agent"},
+                        "name": "grant_action_approval",
+                        "arguments": {
+                            "approval_id": approval_id,
+                            "confirmation": "确认允许这次写入",
+                        },
                     },
                 },
                 headers={"Authorization": "Bearer connected-token"},
             )
-            self.assertTrue(enabled["result"]["structuredContent"]["danger_auto_enabled"])
+            self.assertFalse(granted["result"]["isError"])
+            self.assertEqual(granted["result"]["structuredContent"]["status"], "granted")
             written = self._post_json(
                 base,
                 {
@@ -607,13 +613,29 @@ class DecisionInboxHttpServerTests(unittest.TestCase):
                         "arguments": {
                             "workspace_id": workspace_id,
                             "path": "notes.md",
-                            "content": "ok",
+                            "content": "requires approval",
+                            "approval_id": approval_id,
                         },
                     },
                 },
                 headers={"Authorization": "Bearer connected-token"},
             )
             self.assertFalse(written["result"]["isError"])
+
+            enabled = self._post_json(
+                base,
+                {
+                    "jsonrpc": "2.0",
+                    "id": 45,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "enable_danger_auto",
+                        "arguments": {"phrase": "dangerously trust connected agent"},
+                    },
+                },
+                headers={"Authorization": "Bearer connected-token"},
+            )
+            self.assertTrue(enabled["result"]["structuredContent"]["danger_auto_enabled"])
         finally:
             connected_server.shutdown()
             connected_server.server_close()

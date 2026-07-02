@@ -99,6 +99,7 @@ class DecisionInboxPreflightTests(unittest.TestCase):
         self.assertEqual(preflight.expected_oauth_scope("connected-agent"), "connected-agent")
         self.assertEqual(preflight.risk_coefficient("connected-agent"), "3-5")
         self.assertIn("enable_danger_auto", preflight.expected_tool_names("connected-agent"))
+        self.assertIn("grant_action_approval", preflight.expected_tool_names("connected-agent"))
         self.assertIn("grant_workspace_access", preflight.expected_tool_names("connected-agent"))
 
     def test_ask_first_preflight_skips_mcp_probe(self):

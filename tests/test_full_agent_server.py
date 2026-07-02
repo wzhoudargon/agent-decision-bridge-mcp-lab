@@ -255,6 +255,7 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
                 "enable_danger_auto",
                 "danger_auto_status",
                 "disable_danger_auto",
+                "grant_action_approval",
                 "request_workspace_access",
                 "grant_workspace_access",
             ],
@@ -279,7 +280,68 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
         )
         self.assertTrue(write["result"]["isError"])
         self.assertEqual(write["result"]["structuredContent"]["error"], "approval_required")
-        self.assertIn("dangerously trust connected agent", write["result"]["content"][0]["text"])
+        self.assertEqual(write["result"]["structuredContent"]["approval_kind"], "one_action")
+        approval_id = write["result"]["structuredContent"]["approval_id"]
+        self.assertTrue(approval_id.startswith("approval-"))
+        self.assertNotIn("dangerously trust connected agent", write["result"]["content"][0]["text"])
+
+        grant = srv.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 80,
+                "method": "tools/call",
+                "params": {
+                    "name": "grant_action_approval",
+                    "arguments": {
+                        "approval_id": approval_id,
+                        "confirmation": "确认，可以写入这个 notes.md",
+                    },
+                },
+            },
+            manager,
+        )
+        self.assertFalse(grant["result"]["isError"])
+        self.assertEqual(grant["result"]["structuredContent"]["status"], "granted")
+
+        written = srv.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 81,
+                "method": "tools/call",
+                "params": {
+                    "name": "write",
+                    "arguments": {
+                        "workspace_id": workspace,
+                        "path": "notes.md",
+                        "content": "needs approval",
+                        "approval_id": approval_id,
+                    },
+                },
+            },
+            manager,
+        )
+        self.assertFalse(written["result"]["isError"])
+        self.assertEqual(manager.read_file(workspace, "notes.md"), "needs approval")
+
+        reused = srv.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 82,
+                "method": "tools/call",
+                "params": {
+                    "name": "write",
+                    "arguments": {
+                        "workspace_id": workspace,
+                        "path": "notes.md",
+                        "content": "needs approval",
+                        "approval_id": approval_id,
+                    },
+                },
+            },
+            manager,
+        )
+        self.assertTrue(reused["result"]["isError"])
+        self.assertEqual(reused["result"]["structuredContent"]["error"], "approval_required")
 
     def test_connected_agent_danger_auto_allows_safe_local_work_and_blocks_unsafe_bash(self):
         manager = srv.FullAgentWorkspaceManager(

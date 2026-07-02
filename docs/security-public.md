@@ -26,7 +26,10 @@ Level 2: Connected Agent
 - ChatGPT Web may list, read, and search an allowed project root by default.
 - Requires a user-provided public HTTPS endpoint when ChatGPT Web should call
   the local MCP tools.
-- Write, edit, and bash require approval by default.
+- Write, edit, and bash use one-action approval by default: the tool returns an
+  `approval_id`, ChatGPT asks the user to approve that exact action, calls
+  `grant_action_approval`, and retries the original tool call once with that
+  `approval_id`.
 - `dangerously trust connected agent` is a hidden danger switch inside
   Connected Agent, not an additional product tier.
 - The hidden switch can auto-run project-local write/edit and safe local bash,
@@ -63,14 +66,17 @@ though the connector can request broader tools:
 - open the explicit workspace root,
 - choose task-relevant files by listing/searching the allowed root,
 - do not inspect high-risk credential paths,
-- before write, edit, or bash in default mode, ask the user to approve the exact file or
-  command, intended change, and risk,
+- before write, edit, or bash in default mode, use the one-action approval
+  flow: show the exact file or command, intended change, risk, and returned
+  `approval_id`; after the user approves in chat, call
+  `grant_action_approval` and retry the original tool call once,
 - do not call `enable_danger_auto` unless the user typed the exact hidden-switch phrase
   `dangerously trust connected agent`,
 - report exactly which files were listed, searched, read, denied, or failed.
 
 Use write/edit/bash only after the user explicitly authorizes that specific
-action, unless the hidden danger switch is active and the server permits the action.
+action through one-action approval, unless the hidden danger switch is active
+and the server permits the action.
 
 ## User-Facing Requirement
 

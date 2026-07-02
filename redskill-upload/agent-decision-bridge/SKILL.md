@@ -20,7 +20,7 @@ https://github.com/wzhoudargon/agent-decision-bridge-mcp-lab
 这个 Skill 的定位是把 ChatGPT 网页端接入 Codex 工作流：
 
 - 第一档：Ask First，Codex 生成决策包，用户手动交给 GPT Pro / Claude / Gemini / 其他模型评审，风险最低。
-- 第二档：Connected Agent，网页端可连接到用户授权的项目目录；默认读、搜索、列目录，写入、编辑、bash 需要审批。
+- 第二档：Connected Agent，网页端可连接到用户授权的项目目录；默认读、搜索、列目录；写入、编辑、bash 会返回一次性 `approval_id`，用户在 ChatGPT Web 里确认后即可继续执行该次动作。
 - 隐藏危险开关：`dangerously trust connected agent` 不是独立档位，只是 Connected Agent 内部的高风险开关；用户明确输入后，本次 session 可临时自动执行部分项目内写入、编辑和安全本地 bash，但仍受本地硬拦截限制。
 
 外部模型的输出始终只是建议，不是授权；Codex 仍负责本地事实核查、采纳/询问/拒绝分类，以及最终执行。
@@ -55,8 +55,8 @@ tiers:
   creates a package. Risk `1/5`.
 - `Connected Agent`: attach ChatGPT Web to the local project through MCP under
   explicit allowed roots. No package is generated. Default mode allows
-  read/search/list and asks for approval before write, edit, or bash. Risk
-  `3/5-5/5`.
+  read/search/list. Write, edit, and bash use one-action approval with
+  `approval_id` and `grant_action_approval`. Risk `3/5-5/5`.
 
 `dangerously trust connected agent` is a hidden danger switch inside Connected
 Agent, not an additional tier and not a public product mode. It starts only after the
@@ -95,8 +95,10 @@ or "make ChatGPT Web act like Codex":
 5. Use `scripts/full_agent_session.py open/status/touch/close` when present.
    Despite the legacy filename, the default session mode is Connected Agent.
 6. Default Connected Agent can use `open_workspace`, `ls`, `read`, `grep`, and
-   `glob` automatically. `write`, `edit`, and `bash` return approval-required
-   unless the hidden danger switch is active.
+   `glob` automatically. `write`, `edit`, and `bash` return a one-action
+   `approval_id`; ask the user to approve that exact action in ChatGPT Web,
+   call `grant_action_approval`, then retry the original tool call once with
+   that `approval_id`.
 7. The hidden danger switch starts only when the user typed
    `dangerously trust connected agent` in ChatGPT Web. Do not ask the model to
    invent or infer this phrase. Do not call `enable_danger_auto` unless the
@@ -140,9 +142,13 @@ or "make ChatGPT Web act like Codex":
    - Require the advisor to report exactly which files were listed, searched,
      read, denied, or failed.
    - Inspect first. `write`, `edit`, and `bash` are Connected Agent
-     capabilities, but they require approval by default. If the hidden danger
-     switch is active, the server policy decides whether the action can run
-     automatically, must ask, or must be denied.
+     capabilities, but default mode uses one-action approval: the tool returns
+     `approval_id`, ChatGPT asks the user to approve the exact action, calls
+     `grant_action_approval`, and retries the original tool call once with
+     that `approval_id`. Do not ask the user to enable the hidden danger switch
+     for ordinary one-off writes, edits, or bash commands. If the hidden danger
+     switch is already active, the server policy decides whether the action can
+     run automatically, must ask, or must be denied.
    - After ChatGPT Web returns an answer, run
      `scripts/level3_consultation_flow.py capture` to save advice as external
      review data, refresh the 20-minute idle window by default, and then

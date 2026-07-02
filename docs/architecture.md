@@ -185,13 +185,15 @@ necessary project context directly without a decision package:
 - home and filesystem roots are rejected,
 - tools include `open_workspace`, `ls`, `read`, `write`, `edit`, `grep`,
   `glob`, `bash`, `enable_danger_auto`, `danger_auto_status`,
-  `disable_danger_auto`, `request_workspace_access`, and
+  `disable_danger_auto`, `grant_action_approval`, `request_workspace_access`, and
   `grant_workspace_access`,
 - high-risk credential paths such as `.env*`, `.git`, SSH and cloud credential
   directories, private-key material, and known token/OAuth state files are
   blocked,
 - other task-relevant project files may be chosen by the web advisor,
-- writes, edits, and bash require approval by default,
+- writes, edits, and bash use one-action approval by default: return
+  `approval_id`, confirm with the user in chat, call `grant_action_approval`,
+  then retry the same tool call once,
 - The hidden danger switch starts only after the user typed
   `dangerously trust connected agent`,
 - the hidden danger switch can auto-run project-local write/edit and safe local bash, but

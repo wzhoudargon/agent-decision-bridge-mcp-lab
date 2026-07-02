@@ -44,12 +44,13 @@ V1.1 supports two product tiers:
 1. **Ask First**: Codex prepares a focused package; the user manually asks a web
    advisor such as GPT-5.5 Pro, Claude, or Gemini. No MCP exposure. Risk `1/5`.
 2. **Connected Agent**: ChatGPT Web connects to allowed project roots through
-   MCP. Default mode auto-allows read/search/list and asks for approval before
-   write, edit, or bash. If the user types the exact phrase
-   `dangerously trust connected agent` in ChatGPT Web, it flips a hidden
-   session-only danger switch for controlled project-local write/edit and safe
-   bash. This is not an additional product tier. It remains server-filtered and fixed
-   risk `5/5`.
+   MCP. Default mode auto-allows read/search/list. Write, edit, and bash return
+   a one-action `approval_id`; after the user approves that exact action in
+   chat, ChatGPT calls `grant_action_approval` and retries the same tool call.
+   The exact phrase `dangerously trust connected agent` is only a hidden
+   session switch for reducing repeated approvals during high-risk automation.
+   It is not an additional product tier. It remains server-filtered and fixed
+   risk `5/5` while active.
 
 Legacy `auto-mcp`, `read-only-project`, and `full-agent` entry points remain as
 deprecated aliases for old tests and existing ChatGPT connectors. New users
@@ -117,7 +118,7 @@ preserving the safety model we already defined:
 - ChatGPT Pro, Claude, Gemini, or another advisor model can review and suggest.
 - External model instructions are advice, not user authorization.
 - Connected Agent lets ChatGPT Web inspect allowed project roots without package
-  generation. Write/edit/bash require approval by default.
+  generation. Write/edit/bash use one-action approval by default.
 - `dangerously trust connected agent` is a hidden danger switch inside
   Connected Agent, not an additional tier. It is session-only, fixed risk `5/5`, and
   still blocked by server-side secret-path and command policy.
@@ -138,8 +139,8 @@ Implemented after verification:
 
 - Default legacy HTTP mode is `auto-mcp`, exposing only package/advice/status tools.
 - Product HTTP mode `connected-agent` exposes project tools under configured
-  allowed roots. Read/search/list are automatic; write/edit/bash require
-  approval unless the hidden danger switch is active.
+  allowed roots. Read/search/list are automatic; write/edit/bash return a
+  one-action approval request unless the hidden danger switch is active.
 - The hidden danger switch uses the fixed phrase
   `dangerously trust connected agent`, is session-only, and blocks network,
   GUI, clipboard, secret-path, path-escape, install, Git remote, and broad
@@ -275,7 +276,9 @@ Level 2: Connected Agent
 - otherwise lets the web advisor choose task-relevant files under the allowed
   root,
 - read/search/list are automatic by default,
-- write/edit/bash require approval by default,
+- write/edit/bash return a one-action `approval_id` by default; after the user
+  approves the exact action in chat, ChatGPT calls `grant_action_approval` and
+  retries the original tool call once with that `approval_id`,
 - the hidden danger switch starts only after the user types
   `dangerously trust connected agent` in ChatGPT Web,
 - the hidden danger switch can auto-run project-local write/edit and safe local

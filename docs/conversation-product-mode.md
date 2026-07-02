@@ -91,11 +91,14 @@ Level 2: Connected Agent
 - Let ChatGPT Web directly list/read/search allowed project content by default.
 - Tools include `open_workspace`, `ls`, `read`, `write`, `edit`, `grep`,
   `glob`, `bash`, `enable_danger_auto`, `danger_auto_status`,
-  `disable_danger_auto`, `request_workspace_access`, and
+  `disable_danger_auto`, `grant_action_approval`, `request_workspace_access`, and
   `grant_workspace_access`.
 - High-risk credential paths are blocked by the server; other task-relevant
   project files may be inspected.
-- Write, edit, and bash require approval by default.
+- Write, edit, and bash use one-action approval by default: the tool returns
+  `approval_id`, ChatGPT asks the user to approve that exact action, calls
+  `grant_action_approval`, and retries the same tool call once with that
+  `approval_id`.
 - `dangerously trust connected agent` is a hidden danger switch inside
   Connected Agent, not an additional product tier.
 - The hidden switch starts only after the user types that exact phrase in
@@ -253,7 +256,7 @@ python3 scripts/level3_consultation_prompt.py \
 
 The generated prompt tells ChatGPT to use GPT-5.5 Thinking rather than
 GPT-5.5 Pro for connector access, use only the Connected Agent connector, avoid
-Python/browser file checks, inspect before acting, respect approval gates for
+Python/browser file checks, inspect before acting, use one-action approval for
 write/edit/bash, choose task-relevant project files under the allowed root,
 avoid high-risk credential paths, and report
 `Adopt`, `Ask`, and `Reject` recommendations. Use `--deep` or explicit `--file`
