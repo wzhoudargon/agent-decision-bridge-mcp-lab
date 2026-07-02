@@ -23,6 +23,7 @@ try:
     from server.decision_inbox_store import DecisionInboxStore, default_tasks_root
     from server.full_agent_server import (
         FullAgentWorkspaceManager,
+        PROFILE_CONNECTED_AGENT,
         PROFILE_FULL_AGENT,
         PROFILE_READ_ONLY_PROJECT,
         handle_request as full_agent_handle_request,
@@ -32,6 +33,7 @@ except ModuleNotFoundError:
     from decision_inbox_store import DecisionInboxStore, default_tasks_root  # type: ignore
     from full_agent_server import (  # type: ignore
         FullAgentWorkspaceManager,
+        PROFILE_CONNECTED_AGENT,
         PROFILE_FULL_AGENT,
         PROFILE_READ_ONLY_PROJECT,
         handle_request as full_agent_handle_request,
@@ -45,9 +47,18 @@ DEFAULT_ALLOWED_ORIGINS = [
 ]
 MODE_AUTO_MCP = "auto-mcp"
 MODE_MANUAL = "manual"
+MODE_ASK_FIRST = "ask-first"
 MODE_READ_ONLY_PROJECT = "read-only-project"
 MODE_FULL_AGENT = "full-agent"
-VALID_MODES = {MODE_AUTO_MCP, MODE_MANUAL, MODE_READ_ONLY_PROJECT, MODE_FULL_AGENT}
+MODE_CONNECTED_AGENT = "connected-agent"
+VALID_MODES = {
+    MODE_AUTO_MCP,
+    MODE_MANUAL,
+    MODE_ASK_FIRST,
+    MODE_READ_ONLY_PROJECT,
+    MODE_FULL_AGENT,
+    MODE_CONNECTED_AGENT,
+}
 DEFAULT_FULL_AGENT_STATE_FILE = (
     Path.home() / ".local/share/agent-decision-bridge/oauth-state.json"
 )
@@ -109,8 +120,12 @@ class DecisionInboxHTTPServer(ThreadingHTTPServer):
         return self.mode == MODE_FULL_AGENT
 
     @property
+    def connected_agent_enabled(self) -> bool:
+        return self.mode == MODE_CONNECTED_AGENT
+
+    @property
     def project_workspace_enabled(self) -> bool:
-        return self.mode in {MODE_READ_ONLY_PROJECT, MODE_FULL_AGENT}
+        return self.mode in {MODE_READ_ONLY_PROJECT, MODE_FULL_AGENT, MODE_CONNECTED_AGENT}
 
     def _load_oauth_state(self) -> None:
         if not self.oauth_state_file or not self.oauth_state_file.is_file():
@@ -411,6 +426,8 @@ class DecisionInboxMCPHandler(BaseHTTPRequestHandler):
         }
 
     def _resource_name(self) -> str:
+        if self.server.connected_agent_enabled:
+            return "Agent Decision Bridge Connected Agent"
         if self.server.full_agent_enabled:
             return "Agent Decision Bridge Full-Agent"
         if self.server.mode == MODE_READ_ONLY_PROJECT:
@@ -449,7 +466,9 @@ class DecisionInboxMCPHandler(BaseHTTPRequestHandler):
             self._send_oauth_error(400, "invalid_redirect_uri", "redirect_uri is not allowed")
             return
 
-        if self.server.full_agent_enabled:
+        if self.server.connected_agent_enabled:
+            client_prefix = "connected-agent"
+        elif self.server.full_agent_enabled:
             client_prefix = "full-agent"
         elif self.server.mode == MODE_READ_ONLY_PROJECT:
             client_prefix = "read-only-project"
@@ -679,6 +698,13 @@ class DecisionInboxMCPHandler(BaseHTTPRequestHandler):
 </html>"""
 
     def _authorization_warning(self) -> str:
+        if self.server.connected_agent_enabled:
+            return (
+                "Risk 3/5-5/5: approve only if you intentionally want ChatGPT "
+                "to connect to local project workspaces. Read/search are allowed "
+                "by default; write, edit, and bash require approval unless Danger "
+                "Auto is explicitly enabled by the user."
+            )
         if self.server.full_agent_enabled:
             return (
                 "Risk 5/5: approve only if you intentionally want ChatGPT to read, "
@@ -696,6 +722,13 @@ class DecisionInboxMCPHandler(BaseHTTPRequestHandler):
         )
 
     def _authorization_description(self) -> str:
+        if self.server.connected_agent_enabled:
+            return (
+                "Connected Agent mode is not a sandbox. It can list, read, glob, "
+                "grep, write, edit, and request bash execution inside opened "
+                "workspaces under configured allowed roots. Sensitive paths and "
+                "unsafe commands are blocked by server policy."
+            )
         if self.server.full_agent_enabled:
             return (
                 "Full-Agent mode is not a sandbox. Shell commands run with the local "
@@ -845,12 +878,14 @@ def create_server(
     allowed_roots: Optional[List[Path]] = None,
 ) -> DecisionInboxHTTPServer:
     normalized_mode = normalize_mode(mode)
-    if normalized_mode == MODE_MANUAL:
-        raise ValueError("Manual mode does not start the HTTP MCP server")
+    if normalized_mode in {MODE_MANUAL, MODE_ASK_FIRST}:
+        raise ValueError("Ask First mode does not start the HTTP MCP server")
     store = DecisionInboxStore(tasks_root)
     normalized_public_base_url = normalize_public_base_url(public_base_url)
     if normalized_mode == MODE_FULL_AGENT:
         workspace_profile = PROFILE_FULL_AGENT
+    elif normalized_mode == MODE_CONNECTED_AGENT:
+        workspace_profile = PROFILE_CONNECTED_AGENT
     elif normalized_mode == MODE_READ_ONLY_PROJECT:
         workspace_profile = PROFILE_READ_ONLY_PROJECT
     else:
@@ -885,7 +920,10 @@ def create_server(
         mode=normalized_mode,
         full_agent_manager=full_agent_manager,
     )
-    if normalized_mode in {MODE_READ_ONLY_PROJECT, MODE_FULL_AGENT} and server.oauth_state_file:
+    if (
+        normalized_mode in {MODE_READ_ONLY_PROJECT, MODE_FULL_AGENT, MODE_CONNECTED_AGENT}
+        and server.oauth_state_file
+    ):
         server.save_oauth_state()
     return server
 
@@ -898,6 +936,8 @@ def normalize_mode(value: Optional[str]) -> str:
 
 
 def default_oauth_scopes(mode: str) -> List[str]:
+    if mode == MODE_CONNECTED_AGENT:
+        return ["connected-agent"]
     if mode == MODE_FULL_AGENT:
         return ["full-agent"]
     if mode == MODE_READ_ONLY_PROJECT:
@@ -1009,7 +1049,7 @@ def resolve_oauth_state_file(mode: str, value: Optional[str]) -> Optional[Path]:
         return None
     if value:
         return Path(value).expanduser()
-    if mode in {MODE_READ_ONLY_PROJECT, MODE_FULL_AGENT}:
+    if mode in {MODE_READ_ONLY_PROJECT, MODE_FULL_AGENT, MODE_CONNECTED_AGENT}:
         return DEFAULT_FULL_AGENT_STATE_FILE
     return None
 
@@ -1024,7 +1064,7 @@ def resolve_owner_token(
     if token_file:
         path = Path(token_file).expanduser()
         return read_optional_secret_file(str(path), "DECISION_INBOX_OAUTH_OWNER_TOKEN_FILE"), path, False
-    if mode not in {MODE_READ_ONLY_PROJECT, MODE_FULL_AGENT}:
+    if mode not in {MODE_READ_ONLY_PROJECT, MODE_FULL_AGENT, MODE_CONNECTED_AGENT}:
         return None, None, False
     path = DEFAULT_FULL_AGENT_OWNER_TOKEN_FILE
     if path.is_file():
@@ -1058,7 +1098,10 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         type=Path,
         action="append",
         dest="allowed_roots",
-        help="Allowed project root for read-only-project or full-agent mode. Can be passed multiple times.",
+        help=(
+            "Allowed project root for connected-agent, read-only-project, or "
+            "full-agent mode. Can be passed multiple times."
+        ),
     )
     parser.add_argument(
         "--allow-origin",
@@ -1131,7 +1174,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
             else None
         ),
         help=(
-            "Optional Full-Agent/read-only-project session state file whose "
+            "Optional Connected Agent/Full-Agent/read-only-project session state file whose "
             "last_activity should be refreshed on authenticated MCP requests."
         ),
     )
@@ -1141,7 +1184,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
 def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(argv)
     mode = normalize_mode(args.mode)
-    if mode == MODE_MANUAL:
+    if mode in {MODE_MANUAL, MODE_ASK_FIRST}:
         print("Agent Decision Bridge Ask First mode: use decision-inbox package/advice files.")
         print("No HTTP MCP server was started.")
         return 0
@@ -1199,6 +1242,17 @@ def main(argv: Optional[List[str]] = None) -> int:
             "Risk reason: read-only-project exposes protected project listing, "
             "file reads, glob, and grep to the connected MCP client."
         )
+        print(
+            "Allowed roots: "
+            + ", ".join(str(root) for root in server.full_agent_manager.allowed_roots)
+        )
+    if server.mode == MODE_CONNECTED_AGENT and server.full_agent_manager:
+        print("Risk coefficient: 3/5-5/5")
+        print(
+            "Risk reason: connected-agent exposes local project read/search by default; "
+            "write/edit/bash require approval unless session-only Danger Auto is enabled."
+        )
+        print("Danger Auto phrase: dangerously trust connected agent")
         print(
             "Allowed roots: "
             + ", ".join(str(root) for root in server.full_agent_manager.allowed_roots)

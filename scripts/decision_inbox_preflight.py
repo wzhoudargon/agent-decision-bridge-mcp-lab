@@ -24,7 +24,9 @@ if str(ROOT) not in sys.path:
 
 from server.decision_inbox_http_server import (  # noqa: E402
     DEFAULT_FULL_AGENT_STATE_FILE,
+    MODE_ASK_FIRST,
     MODE_AUTO_MCP,
+    MODE_CONNECTED_AGENT,
     MODE_FULL_AGENT,
     MODE_READ_ONLY_PROJECT,
     VALID_MODES,
@@ -47,6 +49,13 @@ FULL_AGENT_TOOL_NAMES = [
     "grep",
     "glob",
     "bash",
+]
+CONNECTED_AGENT_TOOL_NAMES = FULL_AGENT_TOOL_NAMES + [
+    "enable_danger_auto",
+    "danger_auto_status",
+    "disable_danger_auto",
+    "request_workspace_access",
+    "grant_workspace_access",
 ]
 READ_ONLY_PROJECT_TOOL_NAMES = [
     "open_workspace",
@@ -133,6 +142,16 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 def build_report(args: argparse.Namespace) -> Tuple[List[str], bool]:
     mode = normalize_mode(args.mode)
+    if mode == MODE_ASK_FIRST:
+        return [
+            "Current state: preflight_skipped",
+            "Mode: ask-first",
+            "Expected connector scope: none",
+            "Expected connector tools: none",
+            "Risk coefficient: 1/5",
+            "Reason: Ask First uses package/advice files and does not start an MCP server.",
+            "Preflight result: ok",
+        ], True
     expected_scope = expected_oauth_scope(mode)
     expected_tools = expected_tool_names(mode)
     risk = risk_coefficient(mode)
@@ -233,12 +252,18 @@ def resolve_public_mcp_url(public_base_url: Optional[str], mcp_url: Optional[str
 
 
 def default_oauth_state_file(mode: str) -> Path:
-    if mode in {MODE_READ_ONLY_PROJECT, MODE_FULL_AGENT}:
+    if mode == MODE_ASK_FIRST:
+        return DEFAULT_AUTO_MCP_STATE_FILE
+    if mode in {MODE_READ_ONLY_PROJECT, MODE_FULL_AGENT, MODE_CONNECTED_AGENT}:
         return DEFAULT_FULL_AGENT_STATE_FILE
     return DEFAULT_AUTO_MCP_STATE_FILE
 
 
 def expected_oauth_scope(mode: str) -> str:
+    if mode == MODE_ASK_FIRST:
+        return "none"
+    if mode == MODE_CONNECTED_AGENT:
+        return "connected-agent"
     if mode == MODE_FULL_AGENT:
         return "full-agent"
     if mode == MODE_READ_ONLY_PROJECT:
@@ -247,6 +272,10 @@ def expected_oauth_scope(mode: str) -> str:
 
 
 def expected_tool_names(mode: str) -> List[str]:
+    if mode == MODE_ASK_FIRST:
+        return []
+    if mode == MODE_CONNECTED_AGENT:
+        return CONNECTED_AGENT_TOOL_NAMES
     if mode == MODE_FULL_AGENT:
         return FULL_AGENT_TOOL_NAMES
     if mode == MODE_READ_ONLY_PROJECT:
@@ -255,6 +284,10 @@ def expected_tool_names(mode: str) -> List[str]:
 
 
 def risk_coefficient(mode: str) -> str:
+    if mode == MODE_ASK_FIRST:
+        return "1"
+    if mode == MODE_CONNECTED_AGENT:
+        return "3-5"
     if mode == MODE_FULL_AGENT:
         return "5"
     if mode == MODE_READ_ONLY_PROJECT:

@@ -1,7 +1,7 @@
 # Public Safety Summary For Web Advisors
 
 This file is the sanitized safety summary that ChatGPT Web should read during
-Level 2 and Level 3 connector tests. It intentionally avoids operational
+Connected Agent connector tests. It intentionally avoids operational
 secrets, owner-token paths, OAuth state contents, and local credential details.
 
 ## Trust Boundary
@@ -14,36 +14,36 @@ secrets, owner-token paths, OAuth state contents, and local credential details.
 
 ## Product Tiers
 
-Level 1: Manual Package
+Level 1: Ask First
 
 - No public MCP exposure.
 - Codex creates a package and the user sends it manually.
 - Risk: `1/5`.
 - Does not require Tailscale, Cloudflare, ngrok, or any public tunnel.
 
-Level 2: Read-Only Project Advisor
+Level 2: Connected Agent
 
-- ChatGPT Web may list, read, and search an allowed project root.
+- ChatGPT Web may list, read, and search an allowed project root by default.
 - Requires a user-provided public HTTPS endpoint when ChatGPT Web should call
   the local MCP tools.
-- It must not write files or run commands.
+- Write, edit, and bash require approval by default.
+- `dangerously trust connected agent` is a hidden danger switch inside
+  Connected Agent, not an additional product tier.
+- The hidden switch can auto-run project-local write/edit and safe local bash,
+  but it still cannot bypass server-side blocks.
 - High-risk credential paths are denied by the server: `.env*`, `.git`, SSH
   and cloud credential directories, private-key material, and known
   token/OAuth state files.
+- Network commands, browser/desktop control, clipboard access, path escapes,
+  dependency installs, Git remote operations, permission changes, and broad
+  destructive operations are denied or require explicit approval.
 - Other task-relevant project files may be inspected.
-- Risk: `3/5-4/5`, depending on local/public exposure.
-
-Level 3: Full-Agent Execution
-
-- ChatGPT Web may receive file read/write/edit/search and shell tools inside an
-  explicit allowed root.
-- Requires a user-provided public HTTPS endpoint for ChatGPT Web connector use.
+- Risk: `3/5-5/5`; the hidden switch is fixed `5/5`.
 - Connector calls should be run with GPT-5.5 Thinking selected. GPT-5.5 Pro
   should not be used for MCP/App connector work because Pro models do not expose
   these tools.
 - It is not a sandbox; command execution has the local user's permissions.
 - It must run only inside a short task window and close after idle timeout.
-- Risk while online: `5/5`.
 
 ## Public Endpoint Policy
 
@@ -55,34 +55,36 @@ This project must not provide one shared public domain for multiple users'
 local machines. Shared routing would centralize security, privacy, uptime, and
 abuse risk in the maintainer's account.
 
-## Level 3 Consultation Defaults
+## Connected Agent Consultation Defaults
 
 For product-review consultations, the advisor should inspect context first even
-though the connector has broader tools:
+though the connector can request broader tools:
 
 - open the explicit workspace root,
 - choose task-relevant files by listing/searching the allowed root,
 - do not inspect high-risk credential paths,
-- before write, edit, or bash, ask the user to approve the exact file or
+- before write, edit, or bash in default mode, ask the user to approve the exact file or
   command, intended change, and risk,
+- do not call `enable_danger_auto` unless the user typed the exact hidden-switch phrase
+  `dangerously trust connected agent`,
 - report exactly which files were listed, searched, read, denied, or failed.
 
 Use write/edit/bash only after the user explicitly authorizes that specific
-action.
+action, unless the hidden danger switch is active and the server permits the action.
 
 ## User-Facing Requirement
 
 The mature product flow should let the user say a simple request such as:
 
 ```text
-Use Level 3 to consult GPT Pro about this project.
+Use Connected Agent to consult ChatGPT Web about this project.
 ```
 
 Codex should then:
 
 1. check that a real ChatGPT Web advisor channel is available,
 2. tell the user/browser automation to use GPT-5.5 Thinking for connector access,
-3. open the Full-Agent window only for the active task,
+3. open the Connected Agent window only for the active task,
 4. ask ChatGPT Web through the visible connector,
 5. import the answer,
 6. classify recommendations as `Adopt`, `Ask`, or `Reject`,

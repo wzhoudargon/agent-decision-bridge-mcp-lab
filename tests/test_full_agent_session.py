@@ -19,6 +19,7 @@ class FullAgentSessionTests(unittest.TestCase):
     def make_args(self, tempdir: str, **overrides):
         defaults = {
             "state_file": Path(tempdir) / "session.json",
+            "mode": "connected-agent",
             "host": "127.0.0.1",
             "port": 8765,
             "public_base_url": "https://full-agent.example.com",
@@ -46,7 +47,7 @@ class FullAgentSessionTests(unittest.TestCase):
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
 
-    def test_build_server_command_uses_explicit_full_agent_mode(self):
+    def test_build_server_command_uses_connected_agent_mode_by_default(self):
         with tempfile.TemporaryDirectory() as tempdir:
             workspace = Path(tempdir) / "workspace"
             args = self.make_args(tempdir, allowed_roots=[str(workspace)])
@@ -55,11 +56,19 @@ class FullAgentSessionTests(unittest.TestCase):
 
         self.assertIn("--mode", command)
         mode_index = command.index("--mode")
-        self.assertEqual(command[mode_index + 1], "full-agent")
+        self.assertEqual(command[mode_index + 1], "connected-agent")
         self.assertIn("--allowed-root", command)
         self.assertIn(str(workspace), command)
         self.assertIn("--public-base-url", command)
         self.assertIn("https://full-agent.example.com", command)
+
+    def test_build_server_command_keeps_legacy_full_agent_mode_when_explicit(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            args = self.make_args(tempdir, mode="full-agent")
+
+            command = session.build_server_command(args)
+
+        self.assertEqual(command[command.index("--mode") + 1], "full-agent")
 
     def test_open_requires_allowed_root(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -129,7 +138,8 @@ class FullAgentSessionTests(unittest.TestCase):
         self.assertIn("connector_tools_verified=verified_by_preflight", summary)
         self.assertIn("advisor_channel_verified=not_checked_by_session_helper", summary)
         self.assertIn("session_online=yes", summary)
-        self.assertIn("risk=5/5", summary)
+        self.assertIn("risk=3/5-5/5", summary)
+        self.assertIn("risk=5/5", session.product_readiness_summary(preflight_ran=True, mode="full-agent"))
 
     def test_flush_dns_cache_best_effort_uses_macos_cache_flush(self):
         with mock.patch.object(session.sys, "platform", "darwin"):

@@ -1,4 +1,4 @@
-# codex外接最强助理 V1.0.0 推广文案
+# codex外接最强助理 V1.1.0 推广文案
 
 ## 一句话
 
@@ -16,7 +16,7 @@ codex外接最强助理：把 ChatGPT 网页端变成 Codex 的外部 Agent，�
 2. 我把 GPT 网页端变成了 Codex 的外部 Agent
 3. 让 Codex 额度更耐用：把 GPT Pro 变成专职架构顾问
 4. 不是替代 Codex，而是给 Codex 接了一个 GPT Pro 专家席
-5. 三档权限：从只问 Pro，到让 ChatGPT Web 像 Codex 一样读写项目
+5. 两档权限：从只问 Pro，到让 ChatGPT Web 接入项目
 6. Codex 负责本地执行，GPT Pro 负责深度推理，这个组合太适合做复杂项目
 
 不建议直接说：
@@ -24,7 +24,7 @@ codex外接最强助理：把 ChatGPT 网页端变成 Codex 的外部 Agent，�
 - 让 Codex 额度翻倍
 - GPT Pro 自动接管 Codex
 - 网页端完全替代 Codex
-- 无风险 Full-Agent
+- 无风险自动执行
 
 更稳的说法：
 
@@ -66,15 +66,15 @@ Codex 很适合本地读项目、改代码、跑测试，但很多时候最耗�
 Codex 整理上下文 -> 手动复制到 ChatGPT -> 手动复制回答回来 -> Codex 再判断
 ```
 
-这个 Skill 把它做成了三档产品模型，让 ChatGPT Web 不只是“另一个聊天窗口”，而是 Codex 外部 Agent：
+这个 Skill 把它做成了两档产品模型，让 ChatGPT Web 不只是“另一个聊天窗口”，而是 Codex 外部 Agent：
 
 ```text
-Ask First -> Read-Only Advisor -> Full-Agent Execution
+Ask First -> Connected Agent
 ```
 
-默认不是让网页端 AI 乱动你的电脑，而是按风险逐级开放能力。
+默认不是让网页端 AI 乱动你的电脑，而是在 Connected Agent 里保留审批阀门。另有一个隐藏危险开关：只有用户明确输入 `dangerously trust connected agent` 后，才会临时放宽部分项目内自动执行。
 
-## 三档权限
+## 两档权限
 
 ### Level 1: Ask First
 
@@ -90,50 +90,50 @@ Codex 把问题整理成一个决策包，用户手动粘贴到 ChatGPT Web、Cl
 
 风险：`1/5`
 
-### Level 2: Read-Only Project Advisor
+### Level 2: Connected Agent
 
-网页端可以通过 MCP 读取和搜索指定项目目录，但不能写文件，不能跑命令。
+网页端可以通过 MCP 连接到你授权的项目目录。默认可以读取、搜索、查看目录；写文件、编辑文件、运行 bash 都需要先审批。
 
 适合：
 
 - 让 ChatGPT Web 自己看项目结构
 - 让外部模型做架构、文档、安全边界评审
 - 不想每次手动整理 package 的场景
+- 希望网页端参与项目操作，但仍保留本地审批阀门
 
 安全边界：
 
 - 只能访问显式 allowed-root
-- 不能写文件
-- 不能 bash
+- 默认读/search/list 自动允许
+- write / edit / bash 默认需要审批
 - 服务器硬拦截 `.env*`、`.git`、SSH/cloud 凭据、私钥、OAuth/token 状态文件等高风险路径
 
-风险：`3/5-4/5`
+风险：`3/5-5/5`
 
 模型选择：
 
 - 使用 GPT-5.5 Thinking
 - 不使用 GPT-5.5 Pro 做 MCP connector 调用，因为 Pro 模型不暴露 Apps/MCP 工具
 
-### Level 3: Full-Agent Execution
+### 隐藏危险开关：dangerously trust connected agent
 
-高级模式。
+这不是正式档位，也不是公开产品模式。它只是 Connected Agent 内部的隐藏危险开关。
 
-网页端可以获得类似本地 Agent 的能力：读、写、编辑、搜索、运行 bash，但只在显式 allowed-root 内，且在线风险固定 `5/5`。
+当用户在 ChatGPT Web 里输入固定短语 `dangerously trust connected agent` 后，本次 session 会临时放宽：可以自动允许项目内写入、编辑和安全本地 bash。但服务器仍会拦截联网命令、桌面/浏览器控制、剪贴板、密钥路径、越界路径、依赖安装、Git remote 和大范围破坏性操作。
 
 适合：
 
 - sandbox 项目
 - 可回滚的实验分支
 - 明确授权的高级执行任务
-- 想让 ChatGPT Web 像 Agent 一样参与项目操作
+- 想让 ChatGPT Web 更像 Agent 一样参与项目操作
 
 关键规则：
 
-- 必须显式开启
+- 必须由用户输入固定危险短语后开启
 - 只能在 allowed-root 内
 - 敏感路径仍然硬拦截
-- write / edit / bash 是真实能力，但网页端必须先说明具体文件或命令、预期改动和风险，并获得用户批准后再调用
-- 默认短窗口，当前 V1 是 20 分钟滑动 idle window
+- 默认短窗口，当前 V1.1 是 20 分钟滑动 idle window
 
 风险：`5/5`
 
@@ -155,16 +155,16 @@ GPT 给建议
 Codex 再做本地判断
 ```
 
-所以我做了一个三档权限模型。
+所以我做了一个两档权限模型。
 
 第一档是 Ask First。  
 Codex 只生成一个决策包，我手动粘贴到 GPT-5.5 Pro 或其他网页端模型里。这档最安全，没有任何本机暴露，适合高质量评审。
 
-第二档是 Read-Only Advisor。  
-ChatGPT Web 可以通过 MCP 只读指定项目目录，自己看 README、docs、代码结构，然后给建议。但它不能写文件，不能运行命令，敏感路径比如 `.env`、`.git`、SSH key、OAuth token 都会被本地 server 硬拦截。
+第二档是 Connected Agent。
+ChatGPT Web 可以通过 MCP 连接到你授权的项目目录，自己看 README、docs、代码结构，然后给建议。默认可以读、搜索、列目录；写文件、编辑文件、运行 bash 都要先审批。敏感路径比如 `.env`、`.git`、SSH key、OAuth token 都会被本地 server 硬拦截。
 
-第三档是 Full-Agent。  
-这是高级模式，风险 5/5。网页端可以拥有读、写、编辑、搜索、bash 能力，但只在指定项目根目录里。任何写入、编辑、命令执行，都必须先问用户：要改哪个文件、跑什么命令、风险是什么。用户批准后才执行。
+另外有一个隐藏危险开关，不作为正式档位宣传。
+如果用户在 ChatGPT Web 输入 `dangerously trust connected agent`，本次 session 会临时允许项目内更自动的写入、编辑和安全本地 bash。它固定风险 5/5，而且依然不能绕过本地硬拦截。
 
 我觉得它最有价值的点不是“更自动”，而是把权限分清楚：
 
@@ -188,8 +188,8 @@ ChatGPT Web 可以通过 MCP 只读指定项目目录，自己看 README、docs�
 我准备把它作为 V1.0.0 发布。当前它已经能做到：
 
 - 手动决策包
-- 只读项目顾问
-- Full-Agent 短窗口
+- Connected Agent 项目接入
+- 隐藏危险开关
 - OAuth owner password
 - Tailscale Funnel 公网连接
 - 敏感路径硬拦截
@@ -209,18 +209,18 @@ codex外接最强助理
 
 ### 简介
 
-codex外接最强助理是一个面向 Codex 的跨模型协作 Skill。它把 Codex 的本地执行能力和 ChatGPT Web 的高推理咨询能力连接起来，并提供三档权限模型：手动 Pro 咨询、只读项目顾问、Full-Agent 高级执行。
+codex外接最强助理是一个面向 Codex 的跨模型协作 Skill。它把 Codex 的本地执行能力和 ChatGPT Web 的高推理咨询能力连接起来，并提供两档权限模型：Ask First 手动 Pro 咨询、Connected Agent 项目接入。另有一个隐藏危险开关 `dangerously trust connected agent`，只在用户明确输入后临时开启。
 
 它适合需要 GPT Pro / ChatGPT Web 参与架构评审、方案判断、安全边界检查、代码审查、发布前审查和复杂任务拆解的 Codex 用户。
 
 ### 亮点
 
-- 三档权限：Ask First / Read-Only Advisor / Full-Agent
+- 两档权限：Ask First / Connected Agent
 - 把 GPT Pro 变成 Codex 的专职咨询推理专家
 - 把高消耗的架构评审、方案比较和安全判断分流到 ChatGPT Web
 - 默认安全：外部模型建议不是用户授权
-- Read-Only Advisor 可让 ChatGPT Web 读取指定项目，但不能写文件或跑命令
-- Full-Agent 支持读写编辑搜索和 bash，但要求动作级用户确认
+- Connected Agent 可让 ChatGPT Web 读取、搜索指定项目；写入、编辑、bash 默认需要审批
+- 隐藏危险开关可临时放宽项目内自动写入/编辑/安全 bash，但固定风险 `5/5`
 - 本地硬拦截高风险凭据路径
 - 支持短窗口 MCP 暴露，当前默认 20 分钟 idle 关闭
 - 支持导入网页端 advice 后由 Codex 做 Adopt / Ask / Reject 分类
@@ -241,24 +241,24 @@ codex外接最强助理是一个面向 Codex 的跨模型协作 Skill。它把 C
 
 ### 安全说明
 
-Full-Agent 是高风险模式，风险固定 `5/5`。它不是沙箱，bash 会以本机用户权限运行。请只在明确 allowed-root、可回滚项目或 sandbox 中使用。
+隐藏危险开关是高风险能力，风险固定 `5/5`。它不是沙箱，bash 会以本机用户权限运行。请只在明确 allowed-root、可回滚项目或 sandbox 中使用。
 
 MCP connector 模式请使用 GPT-5.5 Thinking。GPT-5.5 Pro 可用于手动 Ask First 模式，但不适合 MCP/App 工具调用。
 
-## GitHub Release v1.0.0 文案
+## GitHub Release v1.1.0 文案
 
-### codex外接最强助理 / Agent Decision Bridge MCP Lab v1.0.0
+### codex外接最强助理 / Agent Decision Bridge MCP Lab v1.1.0
 
 This release turns the original manual `agent-decision-bridge` workflow into a staged MCP-backed product model.
 
 Highlights:
 
 - Level 1 Ask First: manual package/advice workflow with no MCP exposure.
-- Level 2 Read-Only Project Advisor: ChatGPT Web can inspect an allowed project root through MCP, without writes or shell.
-- Level 3 Full-Agent Execution: explicit high-risk mode with read/write/edit/search/bash tools under allowed roots.
+- Level 2 Connected Agent: ChatGPT Web can inspect allowed project roots through MCP; write/edit/bash require approval by default.
+- Hidden danger switch: session-only high-risk behavior enabled only by the exact user phrase `dangerously trust connected agent`; not an additional product tier.
 - Hard blocks for high-risk credential paths.
-- OAuth owner-password flow and persistent Full-Agent OAuth state outside the repo.
-- Short Full-Agent session windows with 20-minute sliding idle shutdown.
+- OAuth owner-password flow and persistent connector OAuth state outside the repo.
+- Short Connected Agent session windows with 20-minute sliding idle shutdown.
 - Prompt and docs clarify that MCP connector calls should use GPT-5.5 Thinking, not GPT-5.5 Pro.
 - Captured external advice remains review-only until Codex and the user authorize execution.
 
@@ -266,7 +266,7 @@ Safety:
 
 - External model output is advice, not authorization.
 - Codex remains the local verifier and executor.
-- Full-Agent is always risk `5/5` while online.
+- The hidden danger switch is always risk `5/5` while active.
 - Write/edit/bash actions require exact user approval before tool use.
 
 ## FAQ
@@ -279,13 +279,13 @@ Safety:
 
 能，但主要用于第一档 Ask First 手动评审。MCP connector 模式请用 GPT-5.5 Thinking，因为 Pro 模型不暴露 Apps/MCP 工具。
 
-### 第三档有没有写入能力？
+### Connected Agent 有没有写入能力？
 
-有。第三档 Full-Agent 有 `write`、`edit`、`bash` 能力。但这些动作必须先询问用户，说明具体文件或命令、预期改动和风险，用户批准后才能调用。
+有。Connected Agent 暴露 `write`、`edit`、`bash` 能力，但默认必须先询问用户，说明具体文件或命令、预期改动和风险，用户批准后才能调用。隐藏危险开关开启后，项目内部分安全动作可以自动执行，但仍受本地硬拦截限制。
 
 ### 网页端回答 Codex 能自动看到吗？
 
-不一定。第一档需要用户粘贴回来。第二档和第三档的最终回答默认也在 ChatGPT Web 页面里，需要用户粘贴回来、browser automation 抓取，或后续加入安全的 advice writeback 工具。旧的 package-only Auto MCP 支持 `submit_advice` 写回，但不是当前产品化二档/三档的默认机制。
+不一定。Ask First 需要用户粘贴回来。Connected Agent 的最终回答默认也在 ChatGPT Web 页面里，需要用户粘贴回来、browser automation 抓取，或后续加入安全的 advice writeback 工具。旧的 package-only Auto MCP 支持 `submit_advice` 写回，但不是当前产品化两档模型的默认机制。
 
 ### 为什么不用网页端自己的权限菜单替代本地安全阀？
 
@@ -298,12 +298,12 @@ Safety:
 - 让 ChatGPT Web 接入 Codex 工作流
 - 让 Codex 额度更耐用
 - 让网页端模型在可控权限下参与项目评审
-- 三档权限，默认安全，高级模式显式开启
+- 两档权限，默认安全，隐藏危险开关必须显式输入固定短语
 
 不要说：
 
 - 真的让 Codex 额度翻倍
 - GPT Pro 模型能直接调用 MCP 工具
-- 无风险 Full-Agent
+- 无风险自动执行
 - 网页端可以默认接管你的项目
 - 不需要用户授权就能自动执行

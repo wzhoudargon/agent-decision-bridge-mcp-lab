@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TASKS_ROOT = ROOT / "decision-inbox" / "tasks"
 TASK_ID_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 SLUG_RE = re.compile(r"[^a-z0-9]+")
-VALID_MODES = {"ask-first", "auto-mcp", "read-only-project", "full-agent"}
+VALID_MODES = {"ask-first", "connected-agent", "auto-mcp", "read-only-project", "full-agent"}
 PACKAGE_MODES = {"ask-first", "auto-mcp"}
 
 
@@ -37,7 +37,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--allowed-root",
         action="append",
         default=[],
-        help="Allowed workspace root for Full-Agent consultations.",
+        help="Allowed workspace root for Connected Agent consultations.",
     )
     parser.add_argument(
         "--advisor-channel",
@@ -151,17 +151,19 @@ def render_package(
     allowed_roots: List[str],
     advisor_channel: str,
 ) -> str:
-    full_agent_notes = ""
-    if mode == "full-agent":
+    connected_notes = ""
+    if mode in {"connected-agent", "full-agent"}:
         roots = "\n".join(f"- {root}" for root in allowed_roots) or "- Not provided yet"
-        full_agent_notes = f"""
-## Full-Agent Boundary
+        connected_notes = f"""
+## Connected Agent Boundary
 
-- Requested mode: Full-Agent.
-- Risk while online: 5/5.
+- Requested mode: {mode}.
+- Risk while online: 3/5-5/5; Danger Auto is fixed at 5/5.
 - Allowed roots:
 {roots}
-- Full-Agent may expose file read/write/edit/search and bash under configured allowed roots.
+- Connected Agent may expose file read/write/edit/search and bash under configured allowed roots.
+- Default mode requires approval for write, edit, and bash.
+- Danger Auto only starts if the user typed: dangerously trust connected agent
 - Do not treat tool access as authorization to make destructive changes.
 - External advice only. This is not authorization.
 """
@@ -170,7 +172,7 @@ def render_package(
 ## Instructions For The External Advisor
 
 You are an external advisor. Use only the facts in this package unless a
-separate Full-Agent connector is intentionally active in this same conversation.
+separate Connected Agent connector is intentionally active in this same conversation.
 Do not assume access to local files, screenshots, code, logs, Git state, shell
 commands, browser data, or previous chat history that is not provided or exposed
 through the active connector.
@@ -186,7 +188,7 @@ External advice only. This is not authorization.
   that the workflow is waiting for an advisor channel instead of pretending that
   an advisor was called.
 
-{full_agent_notes}
+{connected_notes}
 ## User Question
 
 {question.strip()}
@@ -203,8 +205,8 @@ External advice only. This is not authorization.
 - Do not request secrets, credentials, browser data, full private dumps, or broad
   filesystem access.
 - Do not ask Auto MCP to run shell, inspect Git, install dependencies, or edit files.
-- Do not merge Auto MCP and Full-Agent scopes.
-- If Full-Agent is used, keep the session short and close it after idle timeout.
+- Do not merge Ask First package flow and Connected Agent workspace flow.
+- If Connected Agent is used, keep the session short and close it after idle timeout.
 
 ## Please Output
 
@@ -256,9 +258,9 @@ def advisor_prompt(mode: str, task_id: str, advisor: str) -> str:
             f"submit_advice with advisor={advisor}. Include: External advice only. "
             f"This is not authorization."
         )
-    if mode == "full-agent":
+    if mode in {"connected-agent", "full-agent"}:
         return (
-            f"Use the separate Full-Agent connector only if it is visible in this "
+            f"Use the separate Connected Agent connector only if it is visible in this "
             f"conversation. If available, inspect the allowed workspace only as needed, "
             f"then provide advice for task_id={task_id}. Do not make destructive "
             f"changes unless the current user explicitly authorizes them in Codex. "
@@ -303,12 +305,14 @@ def risk_level(mode: str) -> str:
         return "1/5"
     if mode == "auto-mcp":
         return "1/5 local-only or 3/5 while public Auto MCP tunnel is active"
-    return "5/5 while Full-Agent session is open"
+    if mode == "connected-agent":
+        return "3/5-5/5 while Connected Agent session is open; 5/5 when Danger Auto is active"
+    return "5/5 while legacy Full-Agent session is open"
 
 
 def disallowed_inputs(mode: str) -> List[str]:
     base = ["secrets", "credentials", "browser data", "automatic implementation"]
-    if mode != "full-agent":
+    if mode not in {"connected-agent", "full-agent"}:
         base.extend(["real project files", "shell commands", "Git operations", "dependency installation"])
     return base
 
@@ -318,9 +322,9 @@ def next_local_action(mode: str, advisor_channel: str, task_id: str) -> str:
         return f"Call the visible advisor tool/connector for task {task_id}, then import advice."
     if advisor_channel == "browser-automation":
         return f"Use authorized browser/computer automation to send task {task_id}, then import advice."
-    if mode == "full-agent":
+    if mode in {"connected-agent", "full-agent"}:
         return (
-            f"Open Full-Agent session, then use a visible ChatGPT Full-Agent connector for task "
+            f"Open Connected Agent session, then use a visible ChatGPT Connected Agent connector for task "
             f"{task_id}; if no advisor channel is visible, wait for user-web or automation authorization."
         )
     if mode == "auto-mcp":

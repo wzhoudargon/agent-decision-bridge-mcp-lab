@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Report Level 3 product readiness without opening a public session."""
+"""Report Connected Agent product readiness without opening a public session."""
 
 import argparse
 import subprocess
@@ -17,7 +17,7 @@ DEFAULT_TAILSCALE_SOCKET = "/tmp/tailscaled-decision-inbox.sock"
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Check Level 3 Full-Agent product readiness without opening it."
+        description="Check Connected Agent product readiness without opening it."
     )
     parser.add_argument(
         "--advisor-channel",
@@ -40,7 +40,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     funnel = run_status([args.tailscale_bin, "--socket", args.socket, "funnel", "status"])
     session_state = parse_session_state(session.stdout)
     gate = evaluate_gate(
-        mode="full-agent",
+        mode="connected-agent",
         advisor_channel=args.advisor_channel,
         advisor_health=args.advisor_health,
         session_state=session_state,
@@ -67,13 +67,13 @@ def render_report(
 ) -> str:
     summary = summarize_state(session.stdout, funnel.stdout, gate_message)
     sections = [
-        "Level 3 product status:",
+        "Connected Agent product status:",
         indent(summary),
         "",
-        "Level 3 readiness:",
+        "Connected Agent readiness:",
         gate_message,
         "",
-        "Full-Agent session status:",
+        "Connected Agent session status:",
         indent(session.stdout.strip() or f"command exited {session.returncode}"),
         "",
         "Tailscale Funnel status:",
@@ -87,16 +87,16 @@ def summarize_state(session_output: str, funnel_output: str, gate_message: str) 
     session_closed = session_state == "full_agent_session_closed"
     funnel_closed = "No serve config" in funnel_output
     waiting_for_advisor = "Current state: waiting_for_advisor_channel" in gate_message
-    ready_to_open = "Current state: ready_to_open_full_agent" in gate_message
+    ready_to_open = "Current state: ready_to_open_connected_agent" in gate_message
 
     lines = []
     if ready_to_open:
-        lines.append("Can use now: yes, after opening the short 5/5 task window.")
-        lines.append("User step: keep ChatGPT Web ready with the Full-Agent connector attached.")
+        lines.append("Can use now: yes, after opening the short Connected Agent task window.")
+        lines.append("User step: keep ChatGPT Web ready with the Connected Agent connector attached.")
     elif waiting_for_advisor:
         lines.append("Can use now: not yet.")
         lines.append(
-            "User step: open ChatGPT Web with the Full-Agent connector, or authorize browser automation."
+            "User step: open ChatGPT Web with the Connected Agent connector, or authorize browser automation."
         )
     else:
         lines.append("Can use now: check the detailed readiness state below.")
@@ -105,8 +105,8 @@ def summarize_state(session_output: str, funnel_output: str, gate_message: str) 
         lines.append("Exposure now: closed.")
         lines.append("Risk now: 2/5 if OAuth state remains, otherwise 1/5.")
     elif not session_closed:
-        lines.append("Exposure now: Full-Agent session may be open.")
-        lines.append("Risk now: 5/5 until closed.")
+        lines.append("Exposure now: Connected Agent session may be open.")
+        lines.append("Risk now: 3/5-5/5 until closed.")
     else:
         lines.append("Exposure now: session closed; inspect Funnel status below.")
 

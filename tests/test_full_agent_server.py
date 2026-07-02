@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 import json
+import time
 from pathlib import Path
 
 from server import full_agent_server as srv
@@ -229,6 +230,134 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
         )
         self.assertTrue(write["result"]["isError"])
         self.assertIn("not available", write["result"]["content"][0]["text"])
+
+    def test_connected_agent_default_requires_approval_for_mutations(self):
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root], profile=srv.PROFILE_CONNECTED_AGENT
+        )
+        workspace = manager.open_workspace(str(self.root))["workspace_id"]
+
+        response = srv.handle_request(
+            {"jsonrpc": "2.0", "id": 7, "method": "tools/list"},
+            manager,
+        )
+        self.assertEqual(
+            [tool["name"] for tool in response["result"]["tools"]],
+            [
+                "open_workspace",
+                "ls",
+                "read",
+                "write",
+                "edit",
+                "grep",
+                "glob",
+                "bash",
+                "enable_danger_auto",
+                "danger_auto_status",
+                "disable_danger_auto",
+                "request_workspace_access",
+                "grant_workspace_access",
+            ],
+        )
+        self.assertEqual(manager.read_file(workspace, "README.md"), "hello full agent\n")
+
+        write = srv.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 8,
+                "method": "tools/call",
+                "params": {
+                    "name": "write",
+                    "arguments": {
+                        "workspace_id": workspace,
+                        "path": "notes.md",
+                        "content": "needs approval",
+                    },
+                },
+            },
+            manager,
+        )
+        self.assertTrue(write["result"]["isError"])
+        self.assertEqual(write["result"]["structuredContent"]["error"], "approval_required")
+        self.assertIn("dangerously trust connected agent", write["result"]["content"][0]["text"])
+
+    def test_connected_agent_danger_auto_allows_safe_local_work_and_blocks_unsafe_bash(self):
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root], profile=srv.PROFILE_CONNECTED_AGENT
+        )
+        workspace = manager.open_workspace(str(self.root))["workspace_id"]
+
+        with self.assertRaises(srv.AccessDenied):
+            manager.enable_danger_auto("please trust me")
+        status = manager.enable_danger_auto(srv.DANGER_AUTO_PHRASE)
+        self.assertTrue(status["danger_auto_enabled"])
+        self.assertEqual(status["risk_level"], "5/5")
+
+        write_result = manager.write_file(workspace, "notes/connected.txt", "ship\n")
+        self.assertEqual(write_result["path"], "notes/connected.txt")
+        edit_result = manager.edit_file(
+            workspace,
+            "notes/connected.txt",
+            "ship",
+            "shipped",
+            expected_replacements=1,
+        )
+        self.assertEqual(edit_result["replacements"], 1)
+        command = manager.run_bash(workspace, "printf ok")
+        self.assertEqual(command["stdout"], "ok")
+
+        for command in (
+            "curl https://example.com",
+            "pbpaste",
+            "cat .env",
+            "python3 -m pip install requests",
+        ):
+            with self.subTest(command=command):
+                with self.assertRaises((srv.AccessDenied, srv.ApprovalRequired)):
+                    manager.run_bash(workspace, command)
+
+        git_push = srv.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 9,
+                "method": "tools/call",
+                "params": {
+                    "name": "bash",
+                    "arguments": {
+                        "workspace_id": workspace,
+                        "command": "git push origin main",
+                    },
+                },
+            },
+            manager,
+        )
+        self.assertTrue(git_push["result"]["isError"])
+        self.assertEqual(git_push["result"]["structuredContent"]["error"], "approval_required")
+
+    def test_connected_agent_workspace_access_grant_and_idle_expiry(self):
+        outside = Path(self.tempdir.name) / "outside"
+        outside.mkdir()
+        (outside / "TASK.md").write_text("outside task\n", encoding="utf-8")
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root], profile=srv.PROFILE_CONNECTED_AGENT
+        )
+
+        with self.assertRaises(srv.AccessDenied):
+            manager.open_workspace(str(outside))
+
+        request = manager.request_workspace_access(str(outside), "read linked project", "read")
+        self.assertEqual(request["status"], "approval_required")
+        grant = manager.grant_workspace_access(str(outside), "read")
+        self.assertEqual(grant["status"], "granted")
+
+        outside_workspace = manager.open_workspace(str(outside))["workspace_id"]
+        self.assertEqual(manager.read_file(outside_workspace, "TASK.md"), "outside task\n")
+
+        manager.enable_danger_auto(srv.DANGER_AUTO_PHRASE)
+        manager.session_last_activity = time.time() - srv.DANGER_AUTO_IDLE_SECONDS - 1
+        status = manager.danger_auto_status()
+        self.assertFalse(status["danger_auto_enabled"])
+        self.assertEqual(status["temporary_allowed_roots"], [])
 
 
 if __name__ == "__main__":

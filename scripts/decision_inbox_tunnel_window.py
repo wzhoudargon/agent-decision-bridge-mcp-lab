@@ -102,6 +102,8 @@ def run_tailscale(args: argparse.Namespace, tail_args: List[str]) -> int:
 
 
 def risk_coefficient(mode: str) -> str:
+    if mode == "connected-agent":
+        return "5/5"
     if mode == "full-agent":
         return "5/5"
     if mode == "read-only-project":

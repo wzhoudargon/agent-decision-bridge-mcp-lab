@@ -71,6 +71,28 @@ class DecisionInboxDoctorTests(unittest.TestCase):
         self.assertEqual(risk, 5)
         self.assertIn("shell execution", reason)
 
+    def test_estimates_connected_agent_as_high_risk_workspace_connector(self):
+        risk, reason = doctor.estimate_risk(
+            None,
+            None,
+            "http://127.0.0.1:8765/mcp",
+            mode="connected-agent",
+        )
+
+        self.assertEqual(risk, 4)
+        self.assertIn("Danger Auto", reason)
+
+    def test_estimates_ask_first_as_lowest_risk(self):
+        risk, reason = doctor.estimate_risk(
+            "https://decision-inbox.example.com",
+            "token",
+            "http://127.0.0.1:8765/mcp",
+            mode="ask-first",
+        )
+
+        self.assertEqual(risk, 1)
+        self.assertIn("does not expose an MCP server", reason)
+
     def test_secret_file_status_does_not_read_value(self):
         with tempfile.TemporaryDirectory() as tempdir:
             secret_file = Path(tempdir) / "oauth-state.json"
@@ -158,6 +180,47 @@ class DecisionInboxDoctorTests(unittest.TestCase):
         self.assertIn("Mode: full-agent", report)
         self.assertIn("Risk coefficient: 5/5", report)
         self.assertIn(".local/share/agent-decision-bridge/oauth-state.json", report)
+
+    def test_build_report_connected_agent_uses_connected_agent_defaults(self):
+        args = argparse.Namespace(
+            mode="connected-agent",
+            local_url="http://127.0.0.1:8765/mcp",
+            public_base_url=None,
+            token_env="DECISION_INBOX_MCP_TOKEN",
+            token_file=None,
+            oauth_owner_token_env="DECISION_INBOX_OAUTH_OWNER_TOKEN",
+            oauth_owner_token_file=None,
+            oauth_state_file=None,
+            timeout=0.01,
+            skip_probe=True,
+        )
+
+        report = "\n".join(doctor.build_report(args))
+
+        self.assertIn("Mode: connected-agent", report)
+        self.assertIn("Product tier: Connected Agent", report)
+        self.assertIn("Risk coefficient: 4/5", report)
+        self.assertIn(".local/share/agent-decision-bridge/oauth-state.json", report)
+
+    def test_build_report_ask_first_is_package_only(self):
+        args = argparse.Namespace(
+            mode="ask-first",
+            local_url="http://127.0.0.1:8765/mcp",
+            public_base_url=None,
+            token_env="DECISION_INBOX_MCP_TOKEN",
+            token_file=None,
+            oauth_owner_token_env="DECISION_INBOX_OAUTH_OWNER_TOKEN",
+            oauth_owner_token_file=None,
+            oauth_state_file=None,
+            timeout=0.01,
+            skip_probe=True,
+        )
+
+        report = "\n".join(doctor.build_report(args))
+
+        self.assertIn("Mode: ask-first", report)
+        self.assertIn("Product tier: Ask First", report)
+        self.assertIn("Risk coefficient: 1/5", report)
 
 
 if __name__ == "__main__":

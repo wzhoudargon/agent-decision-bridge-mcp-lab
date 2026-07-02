@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Product wrapper for a bounded Level 3 ChatGPT Web consultation.
+"""Product wrapper for a bounded Connected Agent ChatGPT Web consultation.
 
 The helper does not operate ChatGPT Web. It prepares the local side of the
-workflow: advisor gate, short Full-Agent session, public health check, and safe
+workflow: advisor gate, short Connected Agent session, public health check, and safe
 connector prompt generation. Codex or the user can then paste the copied prompt
 into ChatGPT Web.
 """
@@ -50,12 +50,12 @@ MODEL_SELECTION_NOTICE = (
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Prepare or close a bounded Level 3 consultation window."
+        description="Prepare or close a bounded Connected Agent consultation window."
     )
     subparsers = parser.add_subparsers(dest="action", required=True)
 
     prepare = subparsers.add_parser("prepare", help="Open the session and copy a safe prompt.")
-    prepare.add_argument("question", help="User's Level 3 consultation request.")
+    prepare.add_argument("question", help="User's Connected Agent consultation request.")
     prepare.add_argument("--allowed-root", required=True, help="Workspace root to expose.")
     prepare.add_argument(
         "--public-base-url",
@@ -90,10 +90,10 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
 
     capture = subparsers.add_parser(
         "capture",
-        help="Capture returned advice and refresh the Level 3 idle window by default.",
+        help="Capture returned advice and refresh the Connected Agent idle window by default.",
     )
-    capture.add_argument("question", help="Original Level 3 consultation request.")
-    capture.add_argument("--advisor", default="chatgpt-web-full-agent")
+    capture.add_argument("question", help="Original Connected Agent consultation request.")
+    capture.add_argument("--advisor", default="chatgpt-web-connected-agent")
     capture.add_argument(
         "--source-channel",
         choices=["user-web", "browser-automation", "direct-tool"],
@@ -111,7 +111,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     capture.add_argument(
         "--close-after-capture",
         action="store_true",
-        help="Close the Level 3 session immediately after capture instead of waiting for idle shutdown.",
+        help="Close the Connected Agent session immediately after capture instead of waiting for idle shutdown.",
     )
 
     subparsers.add_parser("close", help="Close the session and print close verification.")
@@ -131,18 +131,18 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 
 def prepare(args: argparse.Namespace) -> int:
-    print("Current state: level3_flow_starting")
-    print("Requested mode: full-agent")
-    print("Risk if opened: 5/5")
+    print("Current state: connected_agent_flow_starting")
+    print("Requested mode: connected-agent")
+    print("Risk if opened: 3/5-5/5")
 
     if not args.public_base_url:
-        print("Current state: level3_flow_failed")
+        print("Current state: connected_agent_flow_failed")
         print("Config error: --public-base-url or DECISION_INBOX_PUBLIC_BASE_URL is required.")
         print(NOT_CONSULTED_NOTICE)
         return 2
 
     gate = evaluate_gate(
-        mode="full-agent",
+        mode="connected-agent",
         advisor_channel=args.advisor_channel,
         advisor_health=args.advisor_health,
         session_state="not_open",
@@ -152,19 +152,19 @@ def prepare(args: argparse.Namespace) -> int:
     if int(gate["exit_code"]) != 0:
         return int(gate["exit_code"])
 
-    print("Opening Full-Agent session and public tunnel...")
+    print("Opening Connected Agent session and public tunnel...")
     open_result = run_command(build_open_command(args))
     print("Open session:")
     print(indent(open_result.stdout.strip()))
     if open_result.returncode != 0:
-        print("Current state: level3_flow_failed")
+        print("Current state: connected_agent_flow_failed")
         print(NOT_CONSULTED_NOTICE)
         return open_result.returncode
 
     health_result = check_public_health_with_recovery(args)
     if not health_is_stable(health_result):
-        print("Current state: level3_flow_failed")
-        print("Reason: public health is not stable; closing the 5/5 window.")
+        print("Current state: connected_agent_flow_failed")
+        print("Reason: public health is not stable; closing the Connected Agent window.")
         close()
         print(NOT_CONSULTED_NOTICE)
         return 1
@@ -177,21 +177,21 @@ def prepare(args: argparse.Namespace) -> int:
         print("Prompt stderr:")
         print(indent(prompt_result.stderr.strip()))
     if prompt_result.returncode != 0:
-        print("Current state: level3_flow_failed")
-        print("Reason: prompt generation failed; closing the 5/5 window before retrying.")
+        print("Current state: connected_agent_flow_failed")
+        print("Reason: prompt generation failed; closing the Connected Agent window before retrying.")
         close()
         print(NOT_CONSULTED_NOTICE)
         return prompt_result.returncode
 
-    print("Current state: level3_flow_ready_for_advisor")
-    print("Risk while session remains open: 5/5")
+    print("Current state: connected_agent_flow_ready_for_advisor")
+    print("Risk while session remains open: 3/5-5/5; Danger Auto is 5/5")
     print(render_handoff(args.advisor_channel))
     print("Close command: python3 scripts/level3_consultation_flow.py close")
     return 0
 
 
 def check_public_health_with_recovery(args: argparse.Namespace) -> subprocess.CompletedProcess[str]:
-    print("Checking public Full-Agent health...")
+    print("Checking public Connected Agent health...")
     result = run_command(build_health_command(args))
     print("Public health:")
     print(indent(result.stdout.strip()))
@@ -239,9 +239,9 @@ def close() -> int:
 
 
 def capture_and_keep_open(args: argparse.Namespace) -> int:
-    print("Current state: level3_flow_capturing_advice")
-    print("Requested mode: full-agent")
-    print("Risk while session may still be open: 5/5")
+    print("Current state: connected_agent_flow_capturing_advice")
+    print("Requested mode: connected-agent")
+    print("Risk while session may still be open: 3/5-5/5")
     input_text = None
     if not args.advice_file:
         input_text = sys.stdin.read()
@@ -254,28 +254,28 @@ def capture_and_keep_open(args: argparse.Namespace) -> int:
 
     if capture_result.returncode != 0:
         refresh_idle_window()
-        print("Current state: level3_flow_failed")
+        print("Current state: connected_agent_flow_failed")
         print("Reason: advice capture failed.")
         return capture_result.returncode
 
     close_status = 0
     should_close = bool(args.close_after_capture)
     if should_close:
-        print("Closing Level 3 session after advice capture because --close-after-capture was set...")
+        print("Closing Connected Agent session after advice capture because --close-after-capture was set...")
         close_status = close()
     else:
         refresh_idle_window()
     if close_status != 0:
-        print("Current state: level3_flow_failed")
+        print("Current state: connected_agent_flow_failed")
         print("Reason: close verification failed.")
         return close_status
 
-    print("Current state: level3_flow_review_ready")
+    print("Current state: connected_agent_flow_review_ready")
     if should_close:
         print("Risk after close: 2/5 if persistent OAuth state remains, otherwise 1/5")
     else:
-        print("Risk after capture: 5/5 until idle shutdown closes the session.")
-        print(f"Idle shutdown: {DEFAULT_IDLE_TIMEOUT_SECONDS} seconds after last Level 3 use.")
+        print("Risk after capture: 3/5-5/5 until idle shutdown closes the session.")
+        print(f"Idle shutdown: {DEFAULT_IDLE_TIMEOUT_SECONDS} seconds after last Connected Agent use.")
     print("Next step: classify captured advice as Adopt / Ask / Reject.")
     return 0
 
@@ -295,6 +295,8 @@ def build_open_command(args: argparse.Namespace) -> List[str]:
         sys.executable,
         str(FULL_AGENT_SESSION),
         "open",
+        "--mode",
+        "connected-agent",
         "--public-base-url",
         str(args.public_base_url),
         "--allowed-root",
@@ -389,8 +391,8 @@ def render_handoff(advisor_channel: str) -> str:
                 BROWSER_AUTOMATION_NOTICE,
                 MODEL_SELECTION_NOTICE,
                 "Next step for Codex:",
-                "  Send the copied prompt in ChatGPT Web using the attached Full-Agent connector.",
-                "  If browser automation cannot type or send reliably, switch to user-web handoff or close the 5/5 window.",
+                "  Send the copied prompt in ChatGPT Web using the attached Connected Agent connector.",
+                "  If browser automation cannot type or send reliably, switch to user-web handoff or close the window.",
                 "  After advice returns, classify it locally as Adopt / Ask / Reject.",
             ]
         )
@@ -407,7 +409,7 @@ def render_handoff(advisor_channel: str) -> str:
         [
             MODEL_SELECTION_NOTICE,
             "Next step for the user:",
-            "  Open a ChatGPT Web conversation using GPT-5.5 Thinking with the Full-Agent connector attached.",
+            "  Open a ChatGPT Web conversation using GPT-5.5 Thinking with the Connected Agent connector attached.",
             "  Paste and send the copied prompt.",
             "  When ChatGPT finishes, paste the answer back into Codex.",
             "  Codex will classify the advice as Adopt / Ask / Reject and close the loop.",

@@ -44,7 +44,7 @@ Decision Inbox v1.
 
 ## What We Borrow
 
-Read-Only Project Advisor can borrow these DevSpace ideas:
+Connected Agent can borrow these DevSpace ideas:
 
 - self-hosted local MCP server,
 - public HTTPS base URL as an origin only,
@@ -61,24 +61,26 @@ Read-Only Project Advisor can borrow these DevSpace ideas:
 - clear tunnel setup and shutdown instructions,
 - warning that public URLs are not secrets.
 
-## What Read-Only Project Advisor Does Not Borrow
+## What Connected Agent Must Still Guard
 
-Read-Only Project Advisor must not borrow these DevSpace capabilities:
+Connected Agent must not expose these capabilities without approval or
+server-side policy:
 
 - arbitrary file reads,
 - sensitive path reads such as `.env`, `.git`, keys, credentials, and tokens,
-- file edits,
-- shell commands,
+- file edits by default,
+- shell commands by default,
 - Git operations,
 - dependency installation,
 - automatic implementation of advisor advice.
 - local fact-check request tools that imply the web advisor can make Codex
   inspect the machine.
 
-Full-Agent mode intentionally borrows file and shell capabilities, but only
-when explicitly started with `--mode full-agent` and `--allowed-root`. It is
-always risk `5/5`. Normal product use should keep Full-Agent online only for
-the active Codex task window and auto-close after a short idle timeout.
+The hidden danger switch intentionally borrows controlled file and shell automation, but
+only inside Connected Agent after the user typed
+`dangerously trust connected agent`. It is always risk `5/5`. Normal product
+use should keep Connected Agent online only for the active Codex task window
+and auto-close after a short idle timeout.
 
 ## Required Default Behavior
 
@@ -91,31 +93,24 @@ no local MCP exposure
 risk coefficient: 1/5
 ```
 
-Public MCP mode must be opt-in and temporary:
+Connected Agent public MCP mode must be opt-in and temporary:
 
 ```text
-Read-Only Project Advisor
+Connected Agent
 explicit user confirmation
 OAuth Owner password or short-lived token
 short test window
 automatic cleanup
-risk coefficient while active: 3/5-4/5
-OAuth scope: read-only-project
-tools: open_workspace, ls, read, grep, glob
-```
-
-Full-Agent public MCP mode:
-
-```text
-explicit --mode full-agent
 explicit --allowed-root
 persistent OAuth state by default
 session-window lifecycle preferred
 auto-close after 20 minutes idle
-file read/write/edit/search and shell tools
-risk coefficient: 5/5
-OAuth scope: full-agent
-separate ChatGPT connector from Read-Only Project Advisor
+risk coefficient while active: 3/5-5/5
+hidden danger switch risk coefficient: 5/5
+OAuth scope: connected-agent
+tools: open_workspace, ls, read, write, edit, grep, glob, bash,
+       enable_danger_auto, danger_auto_status, disable_danger_auto,
+       request_workspace_access, grant_workspace_access
 ```
 
 Public endpoint rule:
@@ -189,13 +184,18 @@ After the public window:
 5. Scan the repo for accidental token or tunnel URL residue.
 6. Report final risk coefficient.
 
-Connector separation:
+Connector profile rule:
 
-- Read-Only Project Advisor and Full-Agent must be two connector profiles, not
-  one mutable profile.
-- The read-only connector uses `read-only-project` scope and project read/search
-  tools only.
-- The execution connector uses `full-agent` scope and is always risk `5/5`.
+- Ask First uses package files and does not need a workspace connector.
+- Connected Agent uses the `connected-agent` scope and one workspace connector.
+- Connected Agent default mode allows read/search/list and requires approval
+  before write/edit/bash.
+- `dangerously trust connected agent` is not a separate connector or product
+  tier. It is a session-only hidden danger switch inside Connected Agent,
+  enabled only after the user types that exact phrase, and is always risk
+  `5/5`.
+- Legacy `read-only-project` and `full-agent` connector scopes may remain only
+  for compatibility tests or old ChatGPT apps.
 
 ## Runtime Skill Candidate
 

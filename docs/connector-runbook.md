@@ -1,12 +1,13 @@
 # Agent Decision Bridge Connector Runbook
 
-This runbook captures the connector hygiene for Manual Package, Read-Only
-Project Advisor, and the explicit high-risk Full-Agent Execution mode.
+This runbook captures connector hygiene for Ask First and V1.1 Connected Agent.
+Legacy Read-Only Project Advisor and Full-Agent Execution remain documented only
+as deprecated compatibility aliases.
 
 ## Principle
 
-Read-Only Project Advisor borrows the self-hosted connector shape and limited
-project reading, not write or shell permissions.
+Connected Agent borrows the self-hosted connector shape and project workspace
+tools while keeping approval gates and hard server-side blocks.
 
 Safe to borrow:
 
@@ -18,18 +19,18 @@ Safe to borrow:
 - short-lived bearer token only for temporary/local compatibility tests,
 - explicit preflight, shutdown, and cleanup checks.
 
-Not borrowed in Read-Only Project Advisor:
+Still blocked or approval-gated in Connected Agent:
 
-- file writes,
-- shell commands,
+- file writes, edits, and bash by default,
 - Git operations,
 - dependency installation,
 - direct secret/key/token reads,
-- automatic execution of advisor advice.
+- browser/desktop/clipboard commands,
+- automatic execution of advisor advice without user approval or the hidden danger switch.
 
-Full-Agent mode intentionally borrows the broad workspace shape. It must be
-started explicitly with `--mode full-agent`, requires `--allowed-root`, and is
-always risk `5/5`.
+The hidden danger switch intentionally borrows a more automatic local execution shape. It
+must be enabled inside Connected Agent by the exact phrase
+`dangerously trust connected agent`, is session-only, and is always risk `5/5`.
 
 ## Product Tiers And Connectors
 
@@ -37,14 +38,15 @@ Use separate ChatGPT account-side connectors:
 
 | Product tier | CLI mode | OAuth scope | ChatGPT connector |
 |---|---|---|---|
-| Manual Package | `manual` | none | none |
+| Ask First | `manual` / package helper `ask-first` | none | none |
+| Connected Agent | `connected-agent` | `connected-agent` | one workspace connector |
 | Legacy Auto MCP Package | `auto-mcp` | `decision-inbox` | one package-only compatibility connector |
-| Read-Only Project Advisor | `read-only-project` | `read-only-project` | one read-only project connector |
-| Full-Agent Execution | `full-agent` | `full-agent` | one separate execution connector |
+| Legacy Read-Only Project Advisor | `read-only-project` | `read-only-project` | deprecated compatibility connector |
+| Legacy Full-Agent Execution | `full-agent` | `full-agent` | deprecated compatibility connector |
 
-Do not reuse a single ChatGPT app for Read-Only Project Advisor and Full-Agent.
-It creates stale scope/tool-cache ambiguity and makes it unclear whether a
-conversation has read-only advisor access or execution-level access.
+Do not reuse a legacy connector app for Connected Agent. It creates stale
+scope/tool-cache ambiguity and makes it unclear which tool surface the current
+conversation can use.
 
 ## Public URL Shape
 
@@ -88,13 +90,12 @@ Recommended defaults:
   domain.
 - **Temporary troubleshooting**: Cloudflare Quick Tunnel, ngrok, or Pinggy.
 
-By tier:
+By product tier:
 
-- Manual Package needs no tunnel.
-- Read-Only Project Advisor needs a tunnel only when ChatGPT Web directly reads
-  the local project through MCP.
-- Full-Agent Execution needs a tunnel for ChatGPT Web connector use and remains
-  risk `5/5` while online.
+- Ask First needs no tunnel.
+- Connected Agent needs a tunnel when ChatGPT Web directly reads, writes,
+  edits, searches, or runs approved bash through MCP.
+- the hidden danger switch remains risk `5/5` while active.
 
 Do not route other users through the maintainer's own domain or tunnel. A
 shared domain would make the maintainer a broker for other people's local
@@ -307,18 +308,20 @@ development app may not expose a safe way to edit its MCP endpoint.
 Risk coefficient: usually `2/5` to `3/5`, depending on the tunnel/provider
 controls and whether OAuth Owner password approval is enabled.
 
-## Read-Only Project Advisor Mode
+## Connected Agent Mode
 
-Use Read-Only Project Advisor when the user wants ChatGPT Web to inspect
-project content directly but not modify or execute anything. Select
-GPT-5.5 Thinking for connector calls; do not use GPT-5.5 Pro for MCP/App tools.
+Use Connected Agent when the user wants ChatGPT Web to inspect project content
+directly and optionally write/edit/run safe local commands through approval
+gates. Select a ChatGPT Web model that exposes Apps/MCP tools; if a Pro chat
+does not expose tools, use Ask First for Pro or switch to a tool-capable
+Thinking chat.
 
 Start:
 
 ```bash
 DECISION_INBOX_PUBLIC_BASE_URL="https://your-stable-host.example.com" \
 python3 server/decision_inbox_http_server.py \
-  --mode read-only-project \
+  --mode connected-agent \
   --host 127.0.0.1 \
   --port 8765 \
   --allowed-root "$HOME/work/my-project"
@@ -330,8 +333,16 @@ Expected tools:
 open_workspace
 ls
 read
+write
+edit
 grep
 glob
+bash
+enable_danger_auto
+danger_auto_status
+disable_danger_auto
+request_workspace_access
+grant_workspace_access
 ```
 
 Do not generate a Decision Inbox package for this tier. ChatGPT reads the
@@ -340,15 +351,28 @@ as `.env*`, `.git`, SSH and cloud credential directories, private-key material,
 and known token/OAuth state files are blocked. Other task-relevant project
 files may be inspected by the advisor.
 
-Risk coefficient: `3/5-4/5`.
+Default behavior:
 
-## Full-Agent Mode
+- read/search/list are automatic inside opened allowed roots,
+- write/edit/bash return approval-required,
+- outside roots require `request_workspace_access` and then
+  `grant_workspace_access` after the user confirms in chat.
 
-Use Full-Agent only when the user intentionally wants a DevSpace-like coding
-connector. It exposes `open_workspace`, `read`, `write`, `edit`, `grep`, `glob`,
-`ls`, and `bash` inside opened workspaces under configured allowed roots.
+Hidden danger switch:
 
-Full-Agent default auth files:
+- user must type `dangerously trust connected agent` in ChatGPT Web,
+- ChatGPT may then call `enable_danger_auto`,
+- safe project-local write/edit and safe local bash may run automatically,
+- network, browser/desktop, clipboard, secret-path, path-escape, install, Git
+  remote, and broad destructive command classes remain blocked or
+  approval-required,
+- it closes after 20 minutes idle with the session helper.
+
+Risk coefficient: `3/5-5/5`; the hidden danger switch is fixed `5/5`.
+
+## Connected Agent Session Window
+
+Connected Agent default auth files:
 
 ```text
 ~/.local/share/agent-decision-bridge/oauth-owner-token
@@ -363,14 +387,14 @@ python3 scripts/level3_consultation_flow.py prepare \
   --allowed-root "$HOME/work/my-project" \
   --advisor-channel user-web \
   --advisor-health ready \
-  "Review whether this project is ready for Level 3 use."
+  "Review whether this project is ready for Connected Agent use."
 ```
 
-This wrapper checks the advisor gate, opens the short Full-Agent window, runs
+This wrapper checks the advisor gate, opens the short Connected Agent window, runs
 public health checks, generates the compact ChatGPT Web prompt, and copies it to
 the clipboard. It does not assume an advisor channel is ready by default; Codex
 must explicitly pass `user-web`, `browser-automation`, or `direct-tool` with
-`advisor-health=ready` before the `5/5` Full-Agent window opens. It closes the
+`advisor-health=ready` before the Connected Agent window opens. It closes the
 window automatically if public health is not `stable`. Its defaults favor stable
 Tailscale task windows over speed: 30 second public warmup, 30 second preflight
 timeout, six open-time preflight attempts, and five public-health probes. If the
@@ -383,8 +407,8 @@ default:
 
 ```bash
 python3 scripts/level3_consultation_flow.py capture \
-  --advisor chatgpt-web-full-agent \
-  "<original Level 3 question>"
+  --advisor chatgpt-web-connected-agent \
+  "<original Connected Agent question>"
 ```
 
 Use an explicit close only when you are stopping before advice has been captured
@@ -397,8 +421,8 @@ python3 scripts/level3_consultation_flow.py close
 The capture action stores the answer under
 `decision-inbox/level3-consultations/` and renders a review-only gate. It does
 not execute advisor instructions or change project files. By default, the
-watchdog closes the session 20 minutes after the last Level 3 use. Each new
-Level 3 action should call `touch` or go through the wrapper so the timer is
+watchdog closes the session 20 minutes after the last Connected Agent use. Each new
+Connected Agent action should call `touch` or go through the wrapper so the timer is
 refreshed.
 
 Low-level session window:
@@ -410,7 +434,7 @@ python3 scripts/full_agent_session.py open \
   --idle-timeout-seconds 1200
 ```
 
-During an active Codex task, call `touch` after each Full-Agent consult step:
+During an active Codex task, call `touch` after each Connected Agent consult step:
 
 ```bash
 python3 scripts/full_agent_session.py touch
@@ -441,15 +465,15 @@ Interpretation:
 - `Public health: failed` means no public preflight passed. Do not ask ChatGPT
   Web to use the connector; fix Funnel/reverse proxy or switch provider.
 
-The session helper starts the Full-Agent server, opens Tailscale Funnel unless
+The session helper starts the Connected Agent server by default, opens Tailscale Funnel unless
 `--local-only` is set, runs read-only preflight, and starts a watchdog. The
 watchdog closes the server and Funnel after the configured idle timeout.
 
 Normal user-facing flow:
 
 ```text
-User: Use Level 3 to consult ChatGPT about <question>.
-Codex: prepares the consultation task, opens/touches the Full-Agent session,
+User: Use Connected Agent to consult ChatGPT about <question>.
+Codex: prepares the consultation task, opens/touches the Connected Agent session,
 checks whether an advisor channel is available, imports the advisor response,
 and reports Adopt / Ask / Reject back to the user.
 ```
@@ -464,7 +488,7 @@ prompt with:
 python3 scripts/level3_consultation_prompt.py \
   --allowed-root "$PWD" \
   --clipboard \
-  "Review whether this project is ready for Level 3 use."
+  "Review whether this project is ready for Connected Agent use."
 ```
 
 This prompt asks ChatGPT Web to use only the connector, avoid Python/browser
@@ -478,9 +502,9 @@ tool-safety blocking.
 
 Use `--clipboard` when Codex will hand the prompt to ChatGPT Web through
 `user-web` or browser automation. It copies only the rendered prompt; it does
-not open the public Full-Agent session and does not send anything by itself.
+not open the public Connected Agent session and does not send anything by itself.
 
-Important: Full-Agent is an inbound connector from ChatGPT Web into the local
+Important: Connected Agent is an inbound connector from ChatGPT Web into the local
 workspace. It does not automatically give Codex an outbound GPT Pro call. If
 Codex cannot see a `direct-tool` advisor channel and browser automation is not
 authorized, the correct state is `waiting_for_advisor_channel`; the product must
@@ -493,15 +517,15 @@ Browser automation note: ChatGPT Web is a heavy frontend. Avoid using full DOM
 snapshots as the primary automation path; they have timed out in this lab. Keep
 prompts compact, prefer a visible prompt box / clipboard paste path, and verify
 success through both the ChatGPT answer and the local MCP server log. If browser
-automation cannot enter text reliably, close the `5/5` session and fall back to
-`user-web` instead of leaving Full-Agent exposed.
+automation cannot enter text reliably, close the session and fall back to
+`user-web` instead of leaving Connected Agent exposed.
 
 Start:
 
 ```bash
 DECISION_INBOX_PUBLIC_BASE_URL="https://your-stable-host.example.com" \
 python3 server/decision_inbox_http_server.py \
-  --mode full-agent \
+  --mode connected-agent \
   --host 127.0.0.1 \
   --port 8765 \
   --allowed-root "$HOME/work/my-project"
@@ -511,7 +535,7 @@ Disable OAuth persistence only when needed:
 
 ```bash
 python3 server/decision_inbox_http_server.py \
-  --mode full-agent \
+  --mode connected-agent \
   --host 127.0.0.1 \
   --port 8765 \
   --allowed-root "$HOME/work/my-project" \
@@ -521,19 +545,29 @@ python3 server/decision_inbox_http_server.py \
 Doctor:
 
 ```bash
-python3 scripts/decision_inbox_doctor.py --mode full-agent
+python3 scripts/decision_inbox_doctor.py --mode connected-agent
 ```
 
-Revoke default Full-Agent auth files:
+Revoke default Connected Agent auth files:
 
 ```bash
 python3 scripts/reset_decision_inbox_auth.py --full-agent-defaults
 ```
 
-Risk coefficient: `5/5`. Bash runs with the local user account and is not a
-sandbox. Do not use broad roots such as home or filesystem root. The idle
-timeout reduces exposure time only; it does not reduce the risk while the
-session is open.
+Risk coefficient: `3/5-5/5`; the hidden danger switch is fixed `5/5`. Bash runs with the
+local user account and is not a sandbox. Do not use broad roots such as home or
+filesystem root. The idle timeout reduces exposure time only; it does not make
+the session safe while it is open.
+
+Deprecated `full-agent` mode remains available only for old connector tests:
+
+```bash
+python3 server/decision_inbox_http_server.py \
+  --mode full-agent \
+  --host 127.0.0.1 \
+  --port 8765 \
+  --allowed-root "$HOME/work/my-project"
+```
 
 ## Stable URL Without Owned Domain: Tailscale Funnel
 
@@ -626,12 +660,13 @@ instability.
 
 Latest 2026-06-24 retest: with a 15 second public warmup, 15 second preflight
 timeout, and repeated health checks, `status --check-public-health` passed 5/5
-and ChatGPT Web completed a real Full-Agent connector read of the default three
-files. Classify this as conditionally usable for a bounded Level 3 task window
+and ChatGPT Web completed a real predecessor workspace connector read of the
+default three files. Classify this as conditionally usable for a bounded
+Connected Agent task window
 after a passing health check. Do not classify it as an always-on stable public
 URL while the macOS Screen Time Tailscale health warning remains.
 
-Follow-up 2026-06-24 Tailscale retest: using the conservative Level 3 defaults
+Follow-up 2026-06-24 Tailscale retest: using the conservative Connected Agent defaults
 of 30 second public warmup, 30 second preflight timeout, six open-time preflight
 attempts, and five status health probes, open-time preflight passed, direct
 public OAuth metadata returned HTTP 200, direct public `/mcp` returned the

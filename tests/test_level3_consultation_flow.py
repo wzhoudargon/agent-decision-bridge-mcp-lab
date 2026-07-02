@@ -23,7 +23,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
         results = [
             completed("Current state: full_agent_session_open\n"),
             completed("Public health: stable preflight_passed=3/3\n"),
-            completed("Current state: level3_prompt_ready\nClipboard: copied\n"),
+            completed("Current state: connected_agent_prompt_ready\nClipboard: copied\n"),
         ]
 
         with mock.patch.object(flow, "run_command", side_effect=results) as run:
@@ -46,8 +46,8 @@ class Level3ConsultationFlowTests(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertEqual(run.call_count, 3)
         output = stdout.getvalue()
-        self.assertIn("Current state: level3_flow_ready_for_advisor", output)
-        self.assertIn("Risk while session remains open: 5/5", output)
+        self.assertIn("Current state: connected_agent_flow_ready_for_advisor", output)
+        self.assertIn("Risk while session remains open: 3/5-5/5", output)
         self.assertIn("use GPT-5.5 Thinking", output)
         self.assertIn("Do not use GPT-5.5 Pro", output)
         self.assertIn("Next step for the user:", output)
@@ -76,7 +76,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
         run.assert_not_called()
         output = stdout.getvalue()
         self.assertIn("waiting_for_advisor_channel", output)
-        self.assertIn("Risk if opened: 5/5", output)
+        self.assertIn("Risk if opened: 3/5-5/5", output)
         self.assertIn("GPT Pro has not been consulted yet", output)
 
     def test_prepare_waits_when_advisor_channel_not_ready(self):
@@ -109,7 +109,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
         results = [
             completed("Current state: full_agent_session_open\n"),
             completed("Public health: stable preflight_passed=3/3\n"),
-            completed("Current state: level3_prompt_ready\nClipboard: copied\n"),
+            completed("Current state: connected_agent_prompt_ready\nClipboard: copied\n"),
         ]
 
         with mock.patch.object(flow, "run_command", side_effect=results):
@@ -177,7 +177,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
             completed("Current state: full_agent_session_open\n"),
             completed("Public health: intermittent preflight_passed=2/3 latest_failure=timeout\n"),
             completed("Public health: stable preflight_passed=3/3\n"),
-            completed("Current state: level3_prompt_ready\nClipboard: copied\n"),
+            completed("Current state: connected_agent_prompt_ready\nClipboard: copied\n"),
         ]
 
         with mock.patch.object(flow, "run_command", side_effect=results) as run:
@@ -201,7 +201,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
         self.assertEqual(run.call_count, 4)
         output = stdout.getvalue()
         self.assertIn("running recovery check 1/1", output)
-        self.assertIn("Current state: level3_flow_ready_for_advisor", output)
+        self.assertIn("Current state: connected_agent_flow_ready_for_advisor", output)
 
     def test_prepare_does_not_recover_after_failed_health(self):
         stdout = StringIO()
@@ -288,7 +288,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertEqual(run.call_count, 5)
         output = stdout.getvalue()
-        self.assertIn("prompt generation failed; closing the 5/5 window", output)
+        self.assertIn("prompt generation failed; closing the Connected Agent window", output)
         self.assertIn("Close verification:", output)
         self.assertIn("GPT Pro has not been consulted yet", output)
 
@@ -296,7 +296,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
         stdout = StringIO()
         results = [
             completed("Current state: review_only\nCaptured advice.\n"),
-            completed("Current state: full_agent_session_touched\nRisk coefficient while open: 5/5\n"),
+            completed("Current state: full_agent_session_touched\nRisk coefficient while open: 3/5-5/5\n"),
         ]
 
         with mock.patch.object(flow.sys, "stdin", StringIO("Adopt: keep user-web.\n")):
@@ -323,10 +323,10 @@ class Level3ConsultationFlowTests(unittest.TestCase):
         self.assertIn("Review Level 3 maturity.", capture_command)
         self.assertEqual(capture_call.kwargs["input_text"], "Adopt: keep user-web.\n")
         output = stdout.getvalue()
-        self.assertIn("Current state: level3_flow_review_ready", output)
+        self.assertIn("Current state: connected_agent_flow_review_ready", output)
         self.assertIn("Idle window refresh:", output)
-        self.assertIn("Risk after capture: 5/5 until idle shutdown closes the session", output)
-        self.assertIn("Idle shutdown: 1200 seconds after last Level 3 use", output)
+        self.assertIn("Risk after capture: 3/5-5/5 until idle shutdown closes the session", output)
+        self.assertIn("Idle shutdown: 1200 seconds after last Connected Agent use", output)
         self.assertIn("Next step: classify captured advice", output)
 
     def test_capture_can_close_immediately_when_explicitly_requested(self):
@@ -362,7 +362,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
         stdout = StringIO()
         results = [
             completed("", returncode=1),
-            completed("Current state: full_agent_session_touched\nRisk coefficient while open: 5/5\n"),
+            completed("Current state: full_agent_session_touched\nRisk coefficient while open: 3/5-5/5\n"),
         ]
 
         with mock.patch.object(flow.sys, "stdin", StringIO("")):

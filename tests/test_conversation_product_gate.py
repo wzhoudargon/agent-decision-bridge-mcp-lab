@@ -36,6 +36,19 @@ class ConversationProductGateTests(unittest.TestCase):
         self.assertIn("Current state: ready_to_open_full_agent", result["message"])
         self.assertIn("Open Full-Agent only for the active consultation window", result["message"])
 
+    def test_connected_agent_ready_when_advisor_channel_is_ready(self):
+        result = gate.evaluate_gate(
+            mode="connected-agent",
+            advisor_channel="user-web",
+            advisor_health="ready",
+            session_state="not_open",
+        )
+
+        self.assertEqual(result["exit_code"], 0)
+        self.assertIn("Current state: ready_to_open_connected_agent", result["message"])
+        self.assertIn("Risk if opened: 3/5-5/5", result["message"])
+        self.assertIn("Open the Connected Agent connector window", result["message"])
+
     def test_full_agent_reports_browser_restart_recovery(self):
         result = gate.evaluate_gate(
             mode="full-agent",

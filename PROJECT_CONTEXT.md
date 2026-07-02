@@ -17,7 +17,7 @@ Can ChatGPT Web, especially a stronger Pro-style web model, participate in this 
 
 ## Important Distinction
 
-There are three different modes that must not be confused:
+There are two current product modes that must not be confused:
 
 1. Ask First:
    - Codex writes package/advice files.
@@ -25,32 +25,30 @@ There are three different modes that must not be confused:
    - Any side-effectful decision remains explicitly user-approved.
    - This is safest and risk `1/5`.
 
-2. Read-Only Project Advisor:
+2. Connected Agent:
    - ChatGPT Web can read and search configured project roots directly.
    - It does not require Codex to generate a decision package.
    - It hard-blocks high-risk credential paths such as `.env*`, `.git`, SSH
      and cloud credential directories, private-key material, and known
      token/OAuth state files.
    - Other task-relevant project files can be selected by the web advisor.
-   - It cannot edit real project files.
-   - It cannot run shell commands.
+   - It can request writes, edits, and bash under allowed roots.
+   - Default mode requires approval for write, edit, and bash.
+   - The hidden danger switch starts only after the user types
+     `dangerously trust connected agent`; it is session-only and fixed risk
+     `5/5`.
+   - The hidden danger switch still blocks network, browser/desktop, clipboard, secret-path,
+     path-escape, dependency install, Git remote, and broad destructive command
+     classes.
    - Codex remains the local verifier and executor.
    - This is the default advisor mode when the user wants ChatGPT Web to inspect project context.
    - Connector runs should use GPT-5.5 Thinking, not GPT-5.5 Pro, because Pro
      models do not expose ChatGPT Apps/MCP tools.
 
-3. Full-Agent, like DevSpace:
-   - ChatGPT Web can read files.
-   - It may edit files.
-   - It may run shell commands.
-   - It requires `--mode full-agent` and `--allowed-root`.
-   - This is powerful but risk `5/5`.
-
-Read-Only Project Advisor is the normal advisor mode for project-aware review.
-Full-Agent is explicit. They must be separate ChatGPT connectors:
-`read-only-project` scope for Read-Only Project Advisor, `full-agent` scope for
-Full-Agent. The old package-only Auto MCP connector remains as legacy
-compatibility, not the product Level 2.
+Legacy `read-only-project` and `full-agent` modes remain as deprecated aliases
+for old ChatGPT connectors/tests. New project-aware review should use
+`connected-agent` scope. The old package-only Auto MCP connector remains as
+legacy compatibility, not the product Level 2.
 
 ## Current Skill Baseline
 
@@ -99,9 +97,10 @@ Instead, keep this as a separate lab project:
 3. Build Decision Inbox MCP v1. Local and ChatGPT Web external connector verification complete.
 4. Run an end-to-end decision package loop. Complete with a synthetic package-only advisor round.
 5. Keep Manual Package as the safest first tier.
-6. Full DevSpace-style write/shell access is implemented as explicit
-   Full-Agent mode, not as the default.
-7. Add Read-Only Project Advisor as the product second tier.
+6. Connected Agent is implemented as the product second tier with approval
+   gates and a session-only hidden danger switch.
+7. Legacy Read-Only Project Advisor and Full-Agent remain only as compatibility
+   aliases.
 
 ## Current Scaffold
 
@@ -110,26 +109,29 @@ Instead, keep this as a separate lab project:
 - `docs/reusable-skill-public-mcp-safety.md` defines the safety rules for turning this lab into reusable behavior for other users.
 - `docs/phase-1-restricted-access-test.md` defines the restricted MCP connector validation plan.
 - `docs/phase-2-decision-inbox-local-verification.md` records the local Decision Inbox MCP v1 test result.
-- `docs/conversation-product-mode.md` defines the conversation-first product behavior and the required distinction between inbound Full-Agent connector access and outbound advisor invocation.
-- `docs/level-3-completion-audit.md` records the current Level 3 maturity audit:
+- `docs/conversation-product-mode.md` defines the conversation-first product behavior and the required distinction between inbound Connected Agent connector access and outbound advisor invocation.
+- `docs/level-3-completion-audit.md` records the earlier workspace connector maturity audit:
   short-window `user-web` is usable, but fully autonomous browser/product
   maturity is not yet verified.
 - `decision-inbox/tasks/_template/` is the reusable task skeleton.
 - `decision-inbox/tasks/phase-1-package-only-mcp-review/` is the first package-only advisor review task.
 - `test-workspace/synthetic-project/` contains only synthetic files for the first access test.
 - `server/decision_inbox_server.py` exposes package/advice/status Auto MCP tools over stdio.
-- `server/full_agent_server.py` exposes explicit high-risk Full-Agent workspace and bash tools.
+- `server/full_agent_server.py` exposes Connected Agent workspace tools,
+  approval gates, the hidden danger switch, and legacy Full-Agent/read-only profiles.
 - `server/decision_inbox_http_server.py` exposes legacy Auto MCP by default,
-  Read-Only Project Advisor with `--mode read-only-project`, and Full-Agent
-  with `--mode full-agent`; it also handles bearer-token auth, OAuth Owner
+  Connected Agent with `--mode connected-agent`, and deprecated workspace
+  aliases with `--mode read-only-project` / `--mode full-agent`; it also handles bearer-token auth, OAuth Owner
   password approval, Origin checks, Host allowlisting, and mode-aware OAuth
   persistence.
 - `scripts/decision_inbox_doctor.py` checks connector readiness, public URL shape, bearer-token/Owner-password presence, OAuth state files, mode, and risk coefficient without printing token values.
 - `scripts/decision_inbox_preflight.py` runs read-only local/public endpoint checks before ChatGPT Web is asked to call MCP tools.
 - `scripts/decision_inbox_tunnel_window.py` opens, checks, reports, and closes a bounded Tailscale Funnel window.
-- `scripts/prepare_consultation.py` creates a Manual Package / legacy package-only Auto MCP task from a natural-language user request. It must not be used for Level 2 or Level 3.
+- `scripts/prepare_consultation.py` creates an Ask First / legacy package-only
+  Auto MCP task from a natural-language user request. It must not be used for
+  Connected Agent.
 - `scripts/import_advice_review.py` renders a review-only Codex import gate for submitted advice.
-- `scripts/level3_consultation_flow.py capture` captures returned Level 3
+- `scripts/level3_consultation_flow.py capture` captures returned Connected Agent
   ChatGPT Web advice as external advice data, renders the review-only gate, and
   closes the session by default. It wraps the lower-level
   `scripts/level3_capture_advice.py` helper.
@@ -159,8 +161,9 @@ When opening this project in a new Codex thread:
 
 ## Current Open Questions
 
-- Should Auto MCP remain package-only as the default production boundary?
-- Is a separate read-only project context phase worth designing after the package-only loop has proven useful?
+- Should legacy Auto MCP remain package-only as a compatibility boundary?
+- How much default approval friction should Connected Agent keep before users
+  opt into the hidden danger switch?
 - What is the minimum useful status UI for the user?
 - Should the next ChatGPT Web connector run verify Auto MCP only, or also run
   a separate explicitly approved Full-Agent connector test?
@@ -169,11 +172,12 @@ When opening this project in a new Codex thread:
 
 - Use plain files first.
 - Use Markdown for human review and JSON only for task metadata.
-- Avoid shell access and project writes in Read-Only Project Advisor.
-- Treat Full-Agent as explicit `5/5` risk whenever used.
+- Use Connected Agent for project-aware review; default write/edit/bash require
+  approval.
+- Treat the hidden danger switch and legacy Full-Agent as explicit `5/5` risk whenever used.
 - Do not claim Codex has consulted GPT Pro unless a real advisor channel returned advice.
 - For ChatGPT Web connector calls, use GPT-5.5 Thinking rather than GPT-5.5 Pro.
-- Treat the current Level 3 state as connector-tools verified and ChatGPT Web
+- Treat the current Connected Agent state as connector-tools verified and ChatGPT Web
   verified for bounded short-window consultations. Earlier rounds used a fixed
   safe file set; the current prompt should let the advisor choose
   task-relevant files under the allowed root while the server hard-blocks

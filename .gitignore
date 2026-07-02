@@ -29,8 +29,11 @@ NEXT_THREAD_PROMPT.md
 
 # Local marketing/export artifacts
 xhs-codex-external-agent/
+xhs-codex-external-agent*/
+social-card-codex-external-agent-cover/output/
 
 # Decision Inbox runtime data
+state/
 decision-inbox/level3-consultations/
 decision-inbox/tasks/*
 !decision-inbox/tasks/README.md

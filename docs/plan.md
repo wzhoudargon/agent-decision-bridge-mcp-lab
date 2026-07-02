@@ -4,6 +4,23 @@
 
 Reduce manual copy-paste between Codex and web advisor models while preserving the `agent-decision-bridge` safety model.
 
+## V1.1 Current Product Model
+
+Status: implemented locally.
+
+- Level 1 is **Ask First**: package/advice only, no MCP exposure, risk `1/5`.
+- Level 2 is **Connected Agent**: ChatGPT Web connects to allowed project roots
+  through `--mode connected-agent`; read/search/list are automatic, while
+  write/edit/bash require approval by default.
+- **Danger Auto** is a Connected Agent sub-mode. It starts only when the user
+  typed `dangerously trust connected agent` in ChatGPT Web and the connector
+  calls `enable_danger_auto`. It is session-only, fixed risk `5/5`, and still
+  server-blocks secret paths, network commands, GUI/clipboard commands, path
+  escapes, dependency installs, Git remote operations, permission changes, and
+  broad destructive operations.
+- Legacy `auto-mcp`, `read-only-project`, and `full-agent` remain only as
+  compatibility aliases for existing tests/connectors.
+
 ## Phase 0: Project Scaffold
 
 Status: complete.

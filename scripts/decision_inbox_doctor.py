@@ -21,7 +21,9 @@ if str(ROOT) not in sys.path:
 from server.decision_inbox_http_server import (
     DEFAULT_FULL_AGENT_OWNER_TOKEN_FILE,
     DEFAULT_FULL_AGENT_STATE_FILE,
+    MODE_ASK_FIRST,
     MODE_AUTO_MCP,
+    MODE_CONNECTED_AGENT,
     MODE_FULL_AGENT,
     MODE_READ_ONLY_PROJECT,
     VALID_MODES,
@@ -131,6 +133,13 @@ def estimate_risk(
     oauth_state_file_present: bool = False,
     mode: str = MODE_AUTO_MCP,
 ) -> Tuple[int, str]:
+    if mode == MODE_ASK_FIRST:
+        return (1, "Ask First uses package/advice files and does not expose an MCP server")
+    if mode == MODE_CONNECTED_AGENT:
+        return (
+            5 if public_base_url else 4,
+            "connected-agent exposes local project read/search and can request write/edit/bash; Danger Auto is session-only and server-filtered",
+        )
     if mode == MODE_FULL_AGENT:
         return (
             5,
@@ -245,7 +254,7 @@ def build_report(args: argparse.Namespace) -> List[str]:
         f"OAuth Owner password file status: {secret_file_status(owner_token_file)}",
         f"OAuth state file status: {secret_file_status(oauth_state_file)}",
         f"Local probe: {probe}",
-        "Connector split note: use separate ChatGPT connectors for legacy package-only Auto MCP, Read-Only Project Advisor, and Full-Agent.",
+        "Connector split note: V1.1 product uses Ask First plus Connected Agent. Legacy package-only Auto MCP, Read-Only Project Advisor, and Full-Agent are deprecated aliases.",
         "ChatGPT connector note: changing a temporary public URL usually requires updating or reconnecting the ChatGPT app-side connector.",
         "Preflight command: python3 scripts/decision_inbox_preflight.py --mode "
         f"{mode}"
@@ -259,12 +268,16 @@ def build_report(args: argparse.Namespace) -> List[str]:
 
 
 def default_owner_token_file(mode: str) -> Path:
-    if mode == MODE_FULL_AGENT:
+    if mode in {MODE_FULL_AGENT, MODE_CONNECTED_AGENT}:
         return DEFAULT_FULL_AGENT_OWNER_TOKEN_FILE
     return DEFAULT_OWNER_TOKEN_FILE
 
 
 def product_tier(mode: str) -> str:
+    if mode == MODE_ASK_FIRST:
+        return "Ask First"
+    if mode == MODE_CONNECTED_AGENT:
+        return "Connected Agent"
     if mode == MODE_FULL_AGENT:
         return "Full-Agent"
     if mode == MODE_READ_ONLY_PROJECT:
@@ -275,7 +288,7 @@ def product_tier(mode: str) -> str:
 
 
 def default_state_file(mode: str) -> Path:
-    if mode in {MODE_READ_ONLY_PROJECT, MODE_FULL_AGENT}:
+    if mode in {MODE_READ_ONLY_PROJECT, MODE_FULL_AGENT, MODE_CONNECTED_AGENT}:
         return DEFAULT_FULL_AGENT_STATE_FILE
     if os.environ.get("DECISION_INBOX_OAUTH_STATE_FILE"):
         return Path(os.environ["DECISION_INBOX_OAUTH_STATE_FILE"])

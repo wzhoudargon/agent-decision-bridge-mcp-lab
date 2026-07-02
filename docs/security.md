@@ -18,17 +18,21 @@ It may reason well, but it cannot be assumed to know:
 1. External model claims are not local facts.
 2. External model instructions are not user authorization.
 3. Review-only means no file changes.
-4. Level 2 Read-Only Project Advisor may expose only project listing, reading,
-   glob, and grep under configured allowed roots.
-5. Level 2 must not expose real project write access.
-6. Level 2 must not expose shell commands.
-7. Level 2 must hard-block high-risk credential paths such as `.env*`, `.git`,
+4. Connected Agent may expose project tools only under configured allowed roots.
+5. Connected Agent default mode must require approval for write, edit, and bash.
+6. The hidden danger switch may auto-run only controlled project-local
+   write/edit and safe local bash after the user typed
+   `dangerously trust connected agent`.
+7. Connected Agent must hard-block high-risk credential paths such as `.env*`, `.git`,
    SSH and cloud credential directories, private-key material, and known
    token/OAuth state files. Other project files may be read when they are
    task-relevant.
-8. Level 2 must not expose browser data, private emails, dependency
-   installation, or local fact-check execution requests.
-9. Any permission expansion must be documented before implementation.
+8. Connected Agent must reject network commands, browser/desktop control,
+   clipboard access, path escapes, secret paths, and broad roots.
+9. Dependency installs, Git remote operations, permission changes, and broad
+   delete/move operations still require approval even when the hidden danger
+   switch is active.
+10. Any permission expansion must be documented before implementation.
 
 ## Data Classes
 
@@ -60,31 +64,24 @@ Not allowed in external advisor exposure unless explicitly authorized:
 
 ## Product Permission Ladder
 
-Level 1: Manual Package
+Level 1: Ask First
 
 - Current baseline.
 - Safest but repetitive.
 - Codex creates a package only when the user chooses this tier.
 
-Level 2: Read-Only Project Advisor
+Level 2: Connected Agent
 
-- Web advisor reads/searches configured project roots directly.
+- Web advisor connects to configured project roots directly.
 - No package generation.
 - High-risk credential paths are hard-blocked; normal project files are
   available when task-relevant.
-- No writes.
-- No shell.
-- Risk `3/5-4/5`.
-
-Level 3: Full-Agent Execution
-
-- Web advisor can read, write, edit, search, and run commands.
-- Powerful but high risk.
-- Implemented only as explicit `--mode full-agent`.
-- Write, edit, and bash are available capabilities, but each action should ask
-  the user to approve the exact file or command, intended change, and risk
-  before tool use.
-- Always risk `5/5`.
+- Default mode allows read/search/list and requires approval for write, edit,
+  and bash.
+- The hidden danger switch starts only after the user types
+  `dangerously trust connected agent`.
+- The hidden danger switch remains server-filtered and fixed risk `5/5`.
+- Risk `3/5-5/5`.
 
 ## Tunnel Risk
 
@@ -107,7 +104,9 @@ Risk coefficients for this lab:
   state file contains bearer-equivalent refresh tokens.
 - `3/5`: public tunnel active with OAuth Owner password or bearer token and package-only tools, or local read-only project exposure.
 - `4/5`: public read-only project exposure, public tunnel active without a token, with a leaked token, or with unclear connector state.
-- `5/5`: Full-Agent mode, broad workspace access, shell/Git/dependency tools, secrets, or real project writes exposed to a web advisor.
+- `5/5`: Connected Agent hidden danger switch, legacy Full-Agent mode, broad workspace
+  access, shell/Git/dependency tools, secrets, or real project writes exposed to
+  a web advisor.
 
 ## Connector Hygiene
 
@@ -128,55 +127,57 @@ Decision Inbox may borrow these DevSpace-style connector practices:
 Legacy Auto MCP must not borrow DevSpace's broad workspace capability surface.
 In `auto-mcp` mode, the server continues to expose only decision-package read,
 advisor-response write, and task-status tools. Product Level 2 is now
-`read-only-project`, not package-only Auto MCP.
+`connected-agent`, not package-only Auto MCP.
 
 Connector separation rules:
 
 - Legacy package-only Auto MCP must use the `decision-inbox` OAuth scope.
-- Read-Only Project Advisor must use the `read-only-project` OAuth scope.
-- Full-Agent must use the `full-agent` OAuth scope.
-- Use separate ChatGPT account-side connectors for these scopes.
+- Connected Agent must use the `connected-agent` OAuth scope.
+- Legacy Read-Only Project Advisor and Full-Agent may keep their old
+  `read-only-project` and `full-agent` scopes only for compatibility.
+- Use separate ChatGPT account-side connectors for incompatible legacy scopes.
 - Do not let one ChatGPT app switch between safe advisor and execution agent
   responsibilities.
 
 Persistent OAuth state rules:
 
 - Auto MCP persistence remains opt-in.
-- Read-Only Project Advisor must remain read-only and block sensitive paths.
-- Full-Agent persistence is default and stored under
+- Connected Agent persistence is default and stored under
   `~/.local/share/agent-decision-bridge/`.
 - State files must stay outside the repo and use mode `0600`.
 - Authorization codes must not be persisted.
 - Use `scripts/reset_decision_inbox_auth.py --full-agent-defaults` or explicit
   state/Owner-password paths to revoke local connector state.
 
-Full-Agent mode:
+Connected Agent mode:
 
-- must be explicitly started with `--mode full-agent`,
+- must be explicitly started with `--mode connected-agent`,
 - must include at least one `--allowed-root`,
 - must reject home and filesystem roots as allowed roots,
 - hard-blocks high-risk credential paths by default,
 - exposes file read/write/edit/search and bash tools,
+- requires approval for write/edit/bash by default,
+- enables the hidden danger switch only after `dangerously trust connected agent`,
 - is not a sandbox; bash runs with the local user account,
-- is always risk `5/5`.
+- is risk `3/5-5/5`, fixed `5/5` while the hidden danger switch is active.
 
-Full-Agent session-window rule:
+Connected Agent session-window rule:
 
-- prefer `scripts/full_agent_session.py` for Level 3 product use,
+- prefer `scripts/full_agent_session.py` for product use,
 - verify that a real advisor channel is available before opening the public
-  Full-Agent window,
+  Connected Agent window,
 - require GPT-5.5 Thinking for ChatGPT Web MCP/App connector calls; do not use
   GPT-5.5 Pro for this step because Pro models do not expose Apps/MCP tools,
-- keep the public Full-Agent connector online only during the active Codex task,
+- keep the public Connected Agent connector online only during the active Codex task,
 - call `touch` after each consult step,
-- close automatically 20 minutes after the last Level 3 use,
-- keep the risk fixed at `5/5` while online,
+- close automatically 20 minutes after the last Connected Agent use,
+- keep the risk at `3/5-5/5` while online, fixed `5/5` when the hidden danger switch is active,
 - after close, residual risk is usually `2/5` if persistent OAuth state remains
   on disk and `1/5` if it has been revoked.
 
 Advisor-channel truthfulness rule:
 
-- Full-Agent exposes local tools to ChatGPT Web; it does not itself let Codex
+- Connected Agent exposes local tools to ChatGPT Web; it does not itself let Codex
   call GPT Pro.
 - In current ChatGPT product docs, Pro models do not support Apps/MCP tools.
   Connector workflows should use GPT-5.5 Thinking even when the user's shorthand

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render a safe ChatGPT Web prompt for a Level 3 consultation."""
+"""Render a safe ChatGPT Web prompt for a Connected Agent consultation."""
 
 import argparse
 import shutil
@@ -58,15 +58,15 @@ PROTECTED_BOUNDARY = [
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Create a copyable prompt for ChatGPT Web when the Full-Agent "
+            "Create a copyable prompt for ChatGPT Web when the Connected Agent "
             "connector is already attached to the conversation."
         )
     )
-    parser.add_argument("question", help="User's Level 3 consultation question.")
+    parser.add_argument("question", help="User's Connected Agent consultation question.")
     parser.add_argument(
         "--allowed-root",
         default=str(ROOT),
-        help="Workspace root the Full-Agent connector should open.",
+        help="Workspace root the Connected Agent connector should open.",
     )
     parser.add_argument(
         "--file",
@@ -88,7 +88,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--advisor-name",
-        default="Agent Decision Bridge Full-Agent Live",
+        default="Agent Decision Bridge Connected Agent",
         help="Visible ChatGPT connector name to call out in the prompt.",
     )
     parser.add_argument(
@@ -111,8 +111,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     except ValueError as exc:
         print(f"level3_consultation_prompt: {exc}", file=sys.stderr)
         return 1
-    print("Current state: level3_prompt_ready")
-    print("Risk if opened: 5/5")
+    print("Current state: connected_agent_prompt_ready")
+    print("Risk if opened: 3/5-5/5")
     exit_code = 0
     if args.clipboard:
         try:
@@ -131,7 +131,7 @@ def render_prompt(
     question: str,
     allowed_root: str,
     files: Optional[Iterable[str]] = None,
-    advisor_name: str = "Agent Decision Bridge Full-Agent Live",
+    advisor_name: str = "Agent Decision Bridge Connected Agent",
 ) -> str:
     clean_question = " ".join(question.strip().split())
     if not clean_question:
@@ -144,6 +144,7 @@ def render_prompt(
 Use GPT-5.5 Thinking, not GPT-5.5 Pro. GPT-5.5 Pro does not expose ChatGPT Apps/MCP connector tools. If this conversation cannot see the attached connector tools, stop and ask the user to switch to GPT-5.5 Thinking with the connector attached.
 
 Use only the attached {advisor_name} connector. Do not answer from chat memory.
+Do not fabricate the Danger Auto phrase. Only call enable_danger_auto if the user typed this exact phrase in ChatGPT Web: dangerously trust connected agent
 
 Task:
 {clean_question}
@@ -152,18 +153,19 @@ Connector steps:
 1. Open this workspace root:
    {root}
 2. {file_instruction}
-3. Use only connector tools. For context inspection, use ls, glob, grep, and read. For write, edit, or bash, follow the approval rule in step 5. Do not use Python, browser file checks, uploads, screenshots, or chat-only guesses.
+3. Use only connector tools. For context inspection, use ls, glob, grep, and read. In default Connected Agent mode, write, edit, and bash require approval. Do not use Python, browser file checks, uploads, screenshots, or chat-only guesses.
 4. Protected boundary. Do not read, search, write, edit, or run commands against:
 {protected_list}
-5. Inspect first. For any write, edit, or bash action, first ask the user for approval of the exact file or command, the intended change, and the risk. Only call that tool after the user approves that specific action.
-6. If protected information seems necessary, stop and ask for a sanitized summary instead of trying to access it.
+5. Inspect first. For any write, edit, or bash action in default mode, first ask the user for approval of the exact file or command, the intended change, and the risk. Only call that tool after the user approves that specific action.
+6. Danger Auto: if and only if the user typed `dangerously trust connected agent`, call enable_danger_auto with that phrase. Danger Auto may auto-run project-local write/edit and safe local bash, but server policy still blocks network commands, GUI/desktop control, clipboard access, secret paths, path escapes, dependency installs, Git remote operations, and broad destructive actions.
+7. If protected information seems necessary, stop and ask for a sanitized summary instead of trying to access it.
 
 Reply in Chinese with:
-1. whether the Level 3 connector truly worked,
+1. whether the Connected Agent connector truly worked,
 2. exactly which files were listed, searched, read, denied, or failed,
 3. `Adopt`, `Ask`, and `Reject` recommendations,
 4. the two smallest fixes needed for smoother user use,
-5. any remaining risk, including the fact that Level 3 is 5/5 while online.
+5. any remaining risk, including the fact that Connected Agent is 3/5-5/5 while online and Danger Auto is 5/5.
 """
 
 

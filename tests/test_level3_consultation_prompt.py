@@ -19,7 +19,7 @@ class Level3ConsultationPromptTests(unittest.TestCase):
             allowed_root="/tmp/example-project",
         )
 
-        self.assertIn("Agent Decision Bridge Full-Agent Live", text)
+        self.assertIn("Agent Decision Bridge Connected Agent", text)
         self.assertIn("/tmp/example-project", text)
         self.assertIn("Use GPT-5.5 Thinking, not GPT-5.5 Pro", text)
         self.assertIn("does not expose ChatGPT Apps/MCP connector tools", text)
@@ -34,8 +34,10 @@ class Level3ConsultationPromptTests(unittest.TestCase):
         self.assertIn("Do not use Python", text)
         self.assertIn("For any write, edit, or bash action", text)
         self.assertIn("Only call that tool after the user approves", text)
+        self.assertIn("dangerously trust connected agent", text)
+        self.assertIn("Only call enable_danger_auto if the user typed", text)
         self.assertIn("exactly which files were listed, searched, read, denied, or failed", text)
-        self.assertIn("5/5 while online", text)
+        self.assertIn("Danger Auto is 5/5", text)
 
     def test_explicit_file_prompt_uses_exact_file_list(self):
         text = prompt.render_prompt(

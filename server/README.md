@@ -7,7 +7,7 @@ Current local file:
 - `restricted_test_workspace_server.py`: a minimal stdio JSON-RPC MCP server for Phase 1 synthetic workspace access testing.
 - `decision_inbox_store.py`: file-backed Decision Inbox storage with task id validation and restricted writes.
 - `decision_inbox_server.py`: legacy package/advice/status server over stdio JSON-RPC.
-- `full_agent_server.py`: workspace MCP backend with read-only-project and full-agent profiles.
+- `full_agent_server.py`: workspace MCP backend with connected-agent, read-only-project, and full-agent profiles.
 - `decision_inbox_http_server.py`: Streamable HTTP `/mcp` wrapper with mode selection, OAuth Owner password auth, optional/default OAuth state persistence by mode, bearer-token compatibility auth, Origin checks, Host allowlisting, and optional public base URL configuration.
 
 ## v1 Scope
@@ -105,7 +105,7 @@ Do not point this server at a real project root. It expects Decision Inbox task 
 ## Running The HTTP Server For ChatGPT Connector Testing
 
 Default compatibility mode is `auto-mcp`. It exposes only the legacy
-package/advice/status tools. Product Level 2 uses `read-only-project`.
+package/advice/status tools. Product workspace mode uses `connected-agent`.
 
 Run locally with OAuth Owner password auth:
 
@@ -137,19 +137,23 @@ python3 scripts/decision_inbox_preflight.py \
   --require-public
 ```
 
-For product Level 2 Read-Only Project Advisor:
+For Connected Agent:
 
 ```bash
 python3 server/decision_inbox_http_server.py \
-  --mode read-only-project \
+  --mode connected-agent \
   --host 127.0.0.1 \
   --port 8765 \
   --allowed-root "$PWD" \
   --oauth-owner-token-file /tmp/decision-inbox-oauth-owner-token
 ```
 
-Expected tools: `open_workspace`, `ls`, `read`, `grep`, `glob`. This mode does
-not generate or serve a decision package.
+Expected tools: `open_workspace`, `ls`, `read`, `write`, `edit`, `grep`,
+`glob`, `bash`, `enable_danger_auto`, `danger_auto_status`,
+`disable_danger_auto`, `request_workspace_access`, and
+`grant_workspace_access`. This mode does not generate or serve a decision
+package. Write/edit/bash require approval by default. Danger Auto starts only
+after `dangerously trust connected agent`.
 
 For tunnel/reverse-proxy runs, provide the public origin without `/mcp`:
 
@@ -210,38 +214,38 @@ material, keep it at mode `0600`, and delete it with
 `python3 scripts/reset_decision_inbox_auth.py` when revoking local connector
 state.
 
-## Running Full-Agent Mode
+## Running Connected Agent Mode
 
-Full-Agent mode is an explicit high-risk mode. It exposes local file
-read/write/edit/search and bash tools to the connected MCP client. Bash runs
-with the local user account; this is not a security sandbox.
+Connected Agent mode exposes local file read/write/edit/search and bash tools
+to the connected MCP client under allowed roots. Bash runs with the local user
+account; this is not a security sandbox.
 
-Start Full-Agent with at least one allowed project root:
+Start Connected Agent with at least one allowed project root:
 
 ```bash
 DECISION_INBOX_PUBLIC_BASE_URL="https://decision-inbox.example.com" \
 python3 server/decision_inbox_http_server.py \
-  --mode full-agent \
+  --mode connected-agent \
   --host 127.0.0.1 \
   --port 8765 \
   --allowed-root "$HOME/work/my-project"
 ```
 
-By default Full-Agent uses persistent auth files outside the repo:
+By default Connected Agent uses persistent auth files outside the repo:
 
 ```text
 ~/.local/share/agent-decision-bridge/oauth-owner-token
 ~/.local/share/agent-decision-bridge/oauth-state.json
 ```
 
-Use `--oauth-state-file none` to disable Full-Agent OAuth persistence. To revoke
-the default Full-Agent auth files:
+Use `--oauth-state-file none` to disable Connected Agent OAuth persistence. To revoke
+the default Connected Agent auth files:
 
 ```bash
 python3 scripts/reset_decision_inbox_auth.py --full-agent-defaults
 ```
 
-Risk coefficient for Full-Agent is always `5/5`.
+Risk coefficient for Connected Agent is `3/5-5/5`; Danger Auto is fixed `5/5`.
 
 Before exposing the endpoint, run:
 
@@ -253,11 +257,14 @@ The doctor reports bearer-token and Owner-password presence, local probe status,
 OAuth state-file status, public URL shape, and risk coefficient without printing
 secret values.
 
-For Full-Agent diagnostics:
+For Connected Agent diagnostics:
 
 ```bash
-python3 scripts/decision_inbox_doctor.py --mode full-agent
+python3 scripts/decision_inbox_doctor.py --mode connected-agent
 ```
+
+Deprecated `full-agent` and `read-only-project` modes remain available only for
+old connector tests.
 
 ## Importing Submitted Advice In Codex
 

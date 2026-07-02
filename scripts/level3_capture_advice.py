@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture Level 3 web-advisor output and render a review-only import gate."""
+"""Capture Connected Agent web-advisor output and render a review-only import gate."""
 
 from __future__ import annotations
 
@@ -27,10 +27,10 @@ SECRET_PATTERNS = [
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Capture pasted ChatGPT Web Full-Agent advice for review-only import."
+        description="Capture pasted ChatGPT Web Connected Agent advice for review-only import."
     )
-    parser.add_argument("--question", required=True, help="Original Level 3 consultation question.")
-    parser.add_argument("--advisor", default="chatgpt-web-full-agent", help="Advisor label.")
+    parser.add_argument("--question", required=True, help="Original Connected Agent consultation question.")
+    parser.add_argument("--advisor", default="chatgpt-web-connected-agent", help="Advisor label.")
     parser.add_argument(
         "--source-channel",
         choices=["user-web", "browser-automation", "direct-tool"],
@@ -47,7 +47,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--consultations-root",
         type=Path,
         default=DEFAULT_CONSULTATIONS_ROOT,
-        help="Directory for Level 3 captured advice.",
+        help="Directory for Connected Agent captured advice.",
     )
     return parser.parse_args(argv)
 
@@ -91,13 +91,13 @@ def capture_advice(args: argparse.Namespace) -> dict:
     metadata.update(
         {
             "run_id": run_id,
-            "mode": "full-agent",
-            "tier": "Level 3",
+            "mode": "connected-agent",
+            "tier": "Connected Agent",
             "question": question,
             "status": "advice_captured",
             "created_at": created_at,
             "updated_at": timestamp,
-            "risk_level_while_online": "5/5",
+            "risk_level_while_online": "3/5-5/5",
             "source_channel": args.source_channel,
             "external_advice_only": True,
             "not_authorization": True,
@@ -138,19 +138,19 @@ Stop reason: needs_local_fact
 Next step: ask_user
 Decision loop recommendation: need_local_fact_check
 
-Level 3 advice capture:
+Connected Agent advice capture:
 - Consultation: `{captured["run_id"]}`
 - Saved advice: `{relative_advice}`
 - Consultation folder: `{relative_run_dir}`
 - Source channel: `{captured["source_channel"]}`
-- Mode: Full-Agent Execution
-- Risk while the connector was online: `5/5`
+- Mode: Connected Agent
+- Risk while the connector was online: `3/5-5/5`; Danger Auto is `5/5`
 - External advice is not authorization.
 
 Local fact check:
 | External recommendation | Local fact check | Decision | Reason | Next action | Authorization source |
 |---|---|---|---|---|---|
-| Pending Codex review of captured Level 3 advice | Not yet checked against local files, tests, and current constraints | Need info | This helper only captures the advice and creates a review gate | Run agent-decision-bridge Import Mode and classify material recommendations as Adopt / Ask / Reject | external model only, not authorization |
+| Pending Codex review of captured Connected Agent advice | Not yet checked against local files, tests, and current constraints | Need info | This helper only captures the advice and creates a review gate | Run agent-decision-bridge Import Mode and classify material recommendations as Adopt / Ask / Reject | external model only, not authorization |
 
 Captured advice:
 ```markdown

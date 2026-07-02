@@ -40,14 +40,14 @@ class Level3StatusTests(unittest.TestCase):
 
         self.assertEqual(status, 2)
         output = print_.call_args.args[0]
-        self.assertIn("Level 3 product status:", output)
+        self.assertIn("Connected Agent product status:", output)
         self.assertIn("Can use now: not yet.", output)
         self.assertIn("Exposure now: closed.", output)
         self.assertIn(
             "Normal flow: prepare -> GPT-5.5 Thinking with connector -> capture -> 20-minute idle close.",
             output,
         )
-        self.assertIn("Level 3 readiness:", output)
+        self.assertIn("Connected Agent readiness:", output)
         self.assertIn("Current state: waiting_for_advisor_channel", output)
         self.assertIn("restart the browser after user confirmation", output)
         self.assertIn("Current state: full_agent_session_closed", output)
@@ -59,15 +59,15 @@ class Level3StatusTests(unittest.TestCase):
             "No serve config\n",
             "\n".join(
                 [
-                    "Current state: ready_to_open_full_agent",
-                    "Requested mode: full-agent",
-                    "Risk if opened: 5/5",
+                    "Current state: ready_to_open_connected_agent",
+                    "Requested mode: connected-agent",
+                    "Risk if opened: 3/5-5/5",
                 ]
             ),
         )
 
         self.assertIn("Can use now: yes", summary)
-        self.assertIn("short 5/5 task window", summary)
+        self.assertIn("short Connected Agent task window", summary)
         self.assertIn("Exposure now: closed.", summary)
 
 

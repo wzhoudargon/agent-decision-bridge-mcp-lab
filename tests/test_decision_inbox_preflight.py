@@ -95,6 +95,34 @@ class DecisionInboxPreflightTests(unittest.TestCase):
         self.assertIn("observed=list_decision_tasks, get_decision_package", report)
         self.assertNotIn("preflight-token", report)
 
+    def test_connected_agent_expected_scope_and_tools(self):
+        self.assertEqual(preflight.expected_oauth_scope("connected-agent"), "connected-agent")
+        self.assertEqual(preflight.risk_coefficient("connected-agent"), "3-5")
+        self.assertIn("enable_danger_auto", preflight.expected_tool_names("connected-agent"))
+        self.assertIn("grant_workspace_access", preflight.expected_tool_names("connected-agent"))
+
+    def test_ask_first_preflight_skips_mcp_probe(self):
+        args = argparse.Namespace(
+            mode="ask-first",
+            local_url="http://127.0.0.1:9/mcp",
+            public_base_url=None,
+            mcp_url=None,
+            task_id=None,
+            token_env="PREFLIGHT_TEST_TOKEN",
+            token_file=Path(self.tempdir.name) / "missing-token",
+            oauth_state_file=Path(self.tempdir.name) / "missing-state.json",
+            timeout=0.01,
+            require_public=False,
+        )
+
+        lines, ok = preflight.build_report(args)
+
+        report = "\n".join(lines)
+        self.assertTrue(ok, report)
+        self.assertIn("Current state: preflight_skipped", report)
+        self.assertIn("Expected connector tools: none", report)
+        self.assertIn("Risk coefficient: 1/5", report)
+
     def test_resolve_public_mcp_url_rejects_query_tokens(self):
         with self.assertRaises(ValueError):
             preflight.resolve_public_mcp_url(

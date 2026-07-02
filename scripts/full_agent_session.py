@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Session-level lifecycle helper for the high-risk Full-Agent connector.
+"""Session-level lifecycle helper for the high-risk Connected Agent connector.
 
-This helper starts the Full-Agent MCP server, optionally opens Tailscale Funnel,
+This helper starts the Connected Agent MCP server, optionally opens Tailscale Funnel,
 runs preflight, and starts a watchdog that closes the public window after a
 short idle period. It intentionally stores process metadata only; OAuth tokens
 stay in the HTTP server's normal state file outside the repo.
@@ -29,6 +29,7 @@ DEFAULT_WATCHDOG_LOG = DEFAULT_STATE_DIR / "watchdog.log"
 DEFAULT_TAILSCALE_SOCKET = os.environ.get(
     "TAILSCALE_SOCKET", "/tmp/tailscaled-decision-inbox.sock"
 )
+DEFAULT_MODE = "connected-agent"
 DEFAULT_IDLE_TIMEOUT_SECONDS = 1200
 DEFAULT_PUBLIC_WARMUP_SECONDS = 10.0
 DEFAULT_PREFLIGHT_TIMEOUT_SECONDS = 10.0
@@ -38,9 +39,15 @@ DEFAULT_PREFLIGHT_RETRY_SECONDS = 5.0
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Open, touch, inspect, or close a short Full-Agent MCP session."
+        description="Open, touch, inspect, or close a short Connected Agent MCP session."
     )
     parser.add_argument("action", choices=["open", "touch", "status", "sweep", "watch", "close"])
+    parser.add_argument(
+        "--mode",
+        choices=["connected-agent", "full-agent"],
+        default=os.environ.get("AGENT_BRIDGE_SESSION_MODE", DEFAULT_MODE),
+        help="Workspace connector mode to open. Defaults to connected-agent.",
+    )
     parser.add_argument("--state-file", type=Path, default=DEFAULT_STATE_FILE)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
@@ -54,7 +61,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         dest="allowed_roots",
         action="append",
         default=[],
-        help="Workspace root Full-Agent may open. Required for open.",
+        help="Workspace root Connected Agent may open. Required for open.",
     )
     parser.add_argument("--tailscale-bin", default="tailscale")
     parser.add_argument("--socket", default=DEFAULT_TAILSCALE_SOCKET)
@@ -142,19 +149,20 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 
 def open_session(args: argparse.Namespace) -> int:
+    risk_while_open = risk_coefficient_for_mode(args.mode)
     if not args.allowed_roots:
         print("Current state: full_agent_session_failed")
-        print("Risk coefficient: 5/5 if opened")
-        print("Config error: --allowed-root is required for Full-Agent.")
+        print(f"Risk coefficient: {risk_while_open} if opened")
+        print("Config error: --allowed-root is required for Connected Agent.")
         return 2
     if not args.local_only and not args.public_base_url:
         print("Current state: full_agent_session_failed")
-        print("Risk coefficient: 5/5 if opened")
+        print(f"Risk coefficient: {risk_while_open} if opened")
         print("Config error: --public-base-url or DECISION_INBOX_PUBLIC_BASE_URL is required.")
         return 2
     if args.idle_timeout_seconds < 60:
         print("Current state: full_agent_session_failed")
-        print("Risk coefficient: 5/5 if opened")
+        print(f"Risk coefficient: {risk_while_open} if opened")
         print("Config error: --idle-timeout-seconds must be at least 60.")
         return 2
 
@@ -163,7 +171,7 @@ def open_session(args: argparse.Namespace) -> int:
         existing["idle_timeout_seconds"] = args.idle_timeout_seconds
         update_last_activity(args.state_file, existing)
         print("Current state: full_agent_session_already_open")
-        print("Risk coefficient while open: 5/5")
+        print(f"Risk coefficient while open: {risk_coefficient_for_state(existing)}")
         print(f"Idle shutdown: {existing.get('idle_timeout_seconds')} seconds after last touch")
         print(f"Public MCP URL: {mcp_url(existing) or 'local-only'}")
         return 0
@@ -185,7 +193,7 @@ def open_session(args: argparse.Namespace) -> int:
     except OSError as exc:
         server_log.close()
         print("Current state: full_agent_session_failed")
-        print("Risk coefficient: 5/5 if opened")
+        print(f"Risk coefficient: {risk_while_open} if opened")
         print(f"Server start error: {exc}")
         return 1
     server_log.close()
@@ -193,7 +201,7 @@ def open_session(args: argparse.Namespace) -> int:
     now = time.time()
     state = {
         "version": 1,
-        "mode": "full-agent",
+        "mode": args.mode,
         "server_pid": server_proc.pid,
         "watchdog_pid": None,
         "host": args.host,
@@ -225,20 +233,20 @@ def open_session(args: argparse.Namespace) -> int:
             save_state(args.state_file, state)
     except Exception as exc:
         print("Current state: full_agent_session_failed")
-        print("Risk coefficient while cleanup is running: 5/5")
+        print(f"Risk coefficient while cleanup is running: {risk_while_open}")
         print(f"Failure: {exc}")
         close_session(args)
         return 1
 
     print("Current state: full_agent_session_open")
-    print("Mode: full-agent")
-    print(product_readiness_summary(preflight_ran=not args.skip_preflight))
-    print("Risk coefficient while open: 5/5")
+    print(f"Mode: {args.mode}")
+    print(product_readiness_summary(preflight_ran=not args.skip_preflight, mode=args.mode))
+    print(f"Risk coefficient while open: {risk_while_open}")
     print(f"Idle shutdown: {args.idle_timeout_seconds} seconds after last touch")
     print(f"Public MCP URL: {mcp_url(state) or 'local-only'}")
     print(f"State file: {args.state_file}")
     print(f"Server log: {args.server_log}")
-    print("Use `python3 scripts/full_agent_session.py touch` after each Full-Agent consult step.")
+    print("Use `python3 scripts/full_agent_session.py touch` after each Connected Agent consult step.")
     return 0
 
 
@@ -255,7 +263,7 @@ def touch_session(args: argparse.Namespace) -> int:
         return 1
     update_last_activity(args.state_file, state)
     print("Current state: full_agent_session_touched")
-    print("Risk coefficient while open: 5/5")
+    print(f"Risk coefficient while open: {risk_coefficient_for_state(state)}")
     print(f"Public MCP URL: {mcp_url(state) or 'local-only'}")
     return 0
 
@@ -271,7 +279,7 @@ def status_session(args: argparse.Namespace) -> int:
     alive = is_pid_running(state.get("server_pid"))
     idle = int(time.time() - float(state.get("last_activity", 0)))
     print(f"Current state: {'full_agent_session_open' if alive else 'full_agent_session_stale'}")
-    print(f"Risk coefficient while open: {'5/5' if alive else 'not_open'}")
+    print(f"Risk coefficient while open: {risk_coefficient_for_state(state) if alive else 'not_open'}")
     print(f"Idle seconds: {idle}")
     print(f"Idle shutdown: {state.get('idle_timeout_seconds')} seconds after last touch")
     print(f"Public MCP URL: {mcp_url(state) or 'local-only'}")
@@ -300,11 +308,11 @@ def sweep_session(args: argparse.Namespace) -> int:
     timeout = float(state.get("idle_timeout_seconds", args.idle_timeout_seconds))
     if idle < timeout:
         print("Current state: full_agent_session_open")
-        print("Risk coefficient while open: 5/5")
+        print(f"Risk coefficient while open: {risk_coefficient_for_state(state)}")
         print(f"Idle seconds: {int(idle)}")
         return 0
     print("Current state: full_agent_session_idle_expired")
-    print("Risk coefficient while closing: 5/5")
+    print(f"Risk coefficient while closing: {risk_coefficient_for_state(state)}")
     return close_session(args, from_watchdog=True)
 
 
@@ -320,7 +328,7 @@ def watch_session(args: argparse.Namespace) -> int:
         timeout = float(state.get("idle_timeout_seconds", args.idle_timeout_seconds))
         if idle >= timeout:
             print("Current state: full_agent_session_idle_expired")
-            print("Risk coefficient while closing: 5/5")
+            print(f"Risk coefficient while closing: {risk_coefficient_for_state(state)}")
             return close_session(args, from_watchdog=True)
         time.sleep(max(1.0, min(args.poll_seconds, timeout - idle)))
 
@@ -353,12 +361,22 @@ def close_session(args: argparse.Namespace, from_watchdog: bool = False) -> int:
     return result
 
 
+def risk_coefficient_for_mode(mode: str) -> str:
+    if mode == "full-agent":
+        return "5/5"
+    return "3/5-5/5"
+
+
+def risk_coefficient_for_state(state: Dict[str, Any]) -> str:
+    return risk_coefficient_for_mode(str(state.get("mode") or DEFAULT_MODE))
+
+
 def build_server_command(args: argparse.Namespace) -> List[str]:
     command = [
         sys.executable,
         str(SERVER),
         "--mode",
-        "full-agent",
+        args.mode,
         "--host",
         args.host,
         "--port",
@@ -376,14 +394,14 @@ def build_server_command(args: argparse.Namespace) -> List[str]:
     return command
 
 
-def product_readiness_summary(preflight_ran: bool) -> str:
+def product_readiness_summary(preflight_ran: bool, mode: str = DEFAULT_MODE) -> str:
     connector_state = "verified_by_preflight" if preflight_ran else "not_verified_preflight_skipped"
     return (
         "Product readiness: "
         f"connector_tools_verified={connector_state}; "
         "advisor_channel_verified=not_checked_by_session_helper; "
         "session_online=yes; "
-        "risk=5/5"
+        f"risk={risk_coefficient_for_mode(mode)}"
     )
 
 
@@ -392,7 +410,7 @@ def run_preflight(args: argparse.Namespace, local_mcp_url: str) -> None:
         sys.executable,
         str(PREFLIGHT),
         "--mode",
-        "full-agent",
+        args.mode,
         "--local-url",
         local_mcp_url,
         "--timeout",
@@ -410,7 +428,7 @@ def run_preflight_for_state(args: argparse.Namespace, state: Dict[str, Any]) -> 
         sys.executable,
         str(PREFLIGHT),
         "--mode",
-        "full-agent",
+        str(state.get("mode") or DEFAULT_MODE),
         "--local-url",
         str(state.get("local_mcp_url") or f"http://{state.get('host', '127.0.0.1')}:{state.get('port', 8765)}/mcp"),
         "--timeout",

@@ -6,7 +6,7 @@ import sys
 from typing import List, Optional
 
 
-MODES = {"manual", "read-only-project", "full-agent"}
+MODES = {"manual", "ask-first", "connected-agent", "read-only-project", "full-agent"}
 ADVISOR_CHANNELS = {"unknown", "manual", "user-web", "browser-automation", "direct-tool"}
 ADVISOR_HEALTH = {"unknown", "ready", "blank", "timeout", "unavailable", "needs-browser-restart"}
 NOT_CONSULTED_NOTICE = (
@@ -63,7 +63,7 @@ def evaluate_gate(
     if advisor_health not in ADVISOR_HEALTH:
         raise ValueError(f"Unsupported advisor health: {advisor_health}")
 
-    if mode == "manual":
+    if mode in {"manual", "ask-first"}:
         return status(
             current_state="manual_package_available",
             requested_mode=mode,
@@ -74,16 +74,24 @@ def evaluate_gate(
             exit_code=0,
         )
 
-    if mode == "read-only-project":
-        risk = "3/5-4/5"
+    if mode in {"read-only-project", "connected-agent"}:
+        risk = "3/5-5/5" if mode == "connected-agent" else "3/5-4/5"
         if advisor_ready(advisor_channel, advisor_health):
             return status(
-                current_state="ready_to_open_read_only_project",
+                current_state=(
+                    "ready_to_open_connected_agent"
+                    if mode == "connected-agent"
+                    else "ready_to_open_read_only_project"
+                ),
                 requested_mode=mode,
                 session_state=session_state,
                 risk=risk,
                 reason="A usable advisor channel is available.",
-                next_step="Open the read-only project connector window.",
+                next_step=(
+                    "Open the Connected Agent connector window."
+                    if mode == "connected-agent"
+                    else "Open the read-only project connector window."
+                ),
                 exit_code=0,
             )
         return waiting(

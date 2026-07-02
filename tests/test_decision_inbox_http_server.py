@@ -170,6 +170,15 @@ class DecisionInboxHttpServerTests(unittest.TestCase):
             ],
         )
 
+    def test_ask_first_mode_does_not_start_http_server(self):
+        with mock.patch("builtins.print") as print_:
+            status = http_srv.main(["--mode", "ask-first"])
+
+        self.assertEqual(status, 0)
+        output = "\n".join(call.args[0] for call in print_.call_args_list)
+        self.assertIn("Ask First mode", output)
+        self.assertIn("No HTTP MCP server was started", output)
+
     def test_invalid_origin_is_rejected(self):
         request = self._request({"jsonrpc": "2.0", "id": 5, "method": "tools/list"})
         request.add_header("Origin", "https://evil.example")
@@ -247,6 +256,17 @@ class DecisionInboxHttpServerTests(unittest.TestCase):
                 auth_token="test-token",
                 allowed_origins=["https://chatgpt.com"],
                 mode=http_srv.MODE_FULL_AGENT,
+            )
+
+    def test_connected_agent_mode_requires_allowed_root(self):
+        with self.assertRaises(ValueError):
+            http_srv.create_server(
+                host="127.0.0.1",
+                port=0,
+                tasks_root=self.tasks_root,
+                auth_token="test-token",
+                allowed_origins=["https://chatgpt.com"],
+                mode=http_srv.MODE_CONNECTED_AGENT,
             )
 
     def test_read_only_project_mode_requires_allowed_root(self):
@@ -331,6 +351,39 @@ class DecisionInboxHttpServerTests(unittest.TestCase):
         finally:
             full_server.shutdown()
             full_server.server_close()
+            thread.join(timeout=2)
+
+    def test_connected_agent_oauth_challenge_uses_connected_agent_scope(self):
+        project_root = Path(self.tempdir.name) / "project-connected-oauth-scope"
+        project_root.mkdir()
+        connected_server = http_srv.create_server(
+            host="127.0.0.1",
+            port=0,
+            tasks_root=self.tasks_root,
+            auth_token=None,
+            allowed_origins=["https://chatgpt.com"],
+            oauth_owner_token="owner",
+            public_base_url="https://decision-inbox.example.com",
+            mode=http_srv.MODE_CONNECTED_AGENT,
+            allowed_roots=[project_root],
+        )
+        thread = threading.Thread(target=connected_server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            status, headers, _ = self._http_request(
+                "POST",
+                "/mcp",
+                port=connected_server.server_port,
+                body=json.dumps(
+                    {"jsonrpc": "2.0", "id": 39, "method": "tools/list"}
+                ).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            self.assertEqual(status, 401)
+            self.assertIn('scope="connected-agent"', headers["WWW-Authenticate"])
+        finally:
+            connected_server.shutdown()
+            connected_server.server_close()
             thread.join(timeout=2)
 
     def test_read_only_project_oauth_challenge_uses_read_only_scope(self):
@@ -454,6 +507,116 @@ class DecisionInboxHttpServerTests(unittest.TestCase):
         finally:
             full_server.shutdown()
             full_server.server_close()
+            thread.join(timeout=2)
+
+    def test_connected_agent_mode_exposes_danger_auto_tools_over_http(self):
+        project_root = Path(self.tempdir.name) / "project-connected-http"
+        project_root.mkdir()
+        (project_root / "README.md").write_text("connected agent http\n", encoding="utf-8")
+        connected_server = http_srv.create_server(
+            host="127.0.0.1",
+            port=0,
+            tasks_root=self.tasks_root,
+            auth_token="connected-token",
+            allowed_origins=["https://chatgpt.com"],
+            mode=http_srv.MODE_CONNECTED_AGENT,
+            allowed_roots=[project_root],
+        )
+        thread = threading.Thread(target=connected_server.serve_forever, daemon=True)
+        thread.start()
+        base = f"http://127.0.0.1:{connected_server.server_port}/mcp"
+        try:
+            tools = self._post_json(
+                base,
+                {"jsonrpc": "2.0", "id": 40, "method": "tools/list"},
+                headers={"Authorization": "Bearer connected-token"},
+            )
+            self.assertEqual(
+                [tool["name"] for tool in tools["result"]["tools"]],
+                [
+                    "open_workspace",
+                    "ls",
+                    "read",
+                    "write",
+                    "edit",
+                    "grep",
+                    "glob",
+                    "bash",
+                    "enable_danger_auto",
+                    "danger_auto_status",
+                    "disable_danger_auto",
+                    "request_workspace_access",
+                    "grant_workspace_access",
+                ],
+            )
+            opened = self._post_json(
+                base,
+                {
+                    "jsonrpc": "2.0",
+                    "id": 41,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "open_workspace",
+                        "arguments": {"path": str(project_root)},
+                    },
+                },
+                headers={"Authorization": "Bearer connected-token"},
+            )
+            workspace_id = opened["result"]["structuredContent"]["workspace_id"]
+            denied = self._post_json(
+                base,
+                {
+                    "jsonrpc": "2.0",
+                    "id": 42,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "write",
+                        "arguments": {
+                            "workspace_id": workspace_id,
+                            "path": "notes.md",
+                            "content": "requires approval",
+                        },
+                    },
+                },
+                headers={"Authorization": "Bearer connected-token"},
+            )
+            self.assertTrue(denied["result"]["isError"])
+            self.assertEqual(denied["result"]["structuredContent"]["error"], "approval_required")
+            enabled = self._post_json(
+                base,
+                {
+                    "jsonrpc": "2.0",
+                    "id": 43,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "enable_danger_auto",
+                        "arguments": {"phrase": "dangerously trust connected agent"},
+                    },
+                },
+                headers={"Authorization": "Bearer connected-token"},
+            )
+            self.assertTrue(enabled["result"]["structuredContent"]["danger_auto_enabled"])
+            written = self._post_json(
+                base,
+                {
+                    "jsonrpc": "2.0",
+                    "id": 44,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "write",
+                        "arguments": {
+                            "workspace_id": workspace_id,
+                            "path": "notes.md",
+                            "content": "ok",
+                        },
+                    },
+                },
+                headers={"Authorization": "Bearer connected-token"},
+            )
+            self.assertFalse(written["result"]["isError"])
+        finally:
+            connected_server.shutdown()
+            connected_server.server_close()
             thread.join(timeout=2)
 
     def test_full_agent_mcp_request_refreshes_session_activity_file(self):

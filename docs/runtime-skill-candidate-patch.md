@@ -2,8 +2,13 @@
 
 Date: 2026-06-24
 
-Status: applied to the runtime skill after explicit user confirmation on
-2026-06-24.
+Status: historical. This candidate was applied after explicit user confirmation
+on 2026-06-24, but it is now superseded by the V1.1 Ask First + Connected
+Agent + Danger Auto model documented in `docs/plan.md` and
+`docs/conversation-product-mode.md`.
+
+Do not use this file as the current product entry point. It is retained only as
+an audit trail for the older Level 1 / Level 2 / Level 3 design.
 
 Lifecycle update status: project scripts/docs updated on 2026-06-24 for the new
 10-minute sliding Level 3 window. Runtime skill wording still needs a separate

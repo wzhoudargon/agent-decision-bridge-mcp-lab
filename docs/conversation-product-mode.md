@@ -4,14 +4,14 @@ This document defines the user-facing behavior for `agent-decision-bridge` when
 the user asks in natural language, for example:
 
 ```text
-Use Level 3 to consult GPT Pro about whether this skill is good enough.
+Use Connected Agent to consult ChatGPT Web about whether this skill is good enough.
 ```
 
 ## Product Promise
 
 The skill should behave like a conversation product:
 
-1. understand the requested tier,
+1. understand the requested product tier,
 2. prepare the right decision context,
 3. open only the minimum required connector window,
 4. ask the advisor through an actually available channel,
@@ -24,10 +24,10 @@ available in the current Codex conversation.
 
 ## Critical Distinction
 
-Full-Agent is an inbound connector:
+Connected Agent is an inbound connector:
 
 ```text
-ChatGPT Web -> MCP connector -> local Full-Agent tools
+ChatGPT Web -> MCP connector -> local Connected Agent tools
 ```
 
 It is not, by itself, an outbound GPT Pro API for Codex:
@@ -36,9 +36,9 @@ It is not, by itself, an outbound GPT Pro API for Codex:
 Codex -> GPT Pro Web model
 ```
 
-Therefore a Level 3 request needs both:
+Therefore a Connected Agent request needs both:
 
-- a Full-Agent session if ChatGPT Web should inspect or operate on the local
+- a Connected Agent session if ChatGPT Web should inspect or operate on the local
   workspace,
 - an advisor channel that lets the request reach ChatGPT Web.
 
@@ -84,49 +84,36 @@ Level 1: Ask First
 - Risk `1/5`.
 - User manually sends package and returns advice.
 
-Level 2: Read-Only Project Advisor
+Level 2: Connected Agent
 
 - Do not create a decision package.
-- Use `--mode read-only-project`.
-- Let ChatGPT Web directly list/read/search allowed project content.
-- Tools: `open_workspace`, `ls`, `read`, `grep`, `glob`.
+- Use `--mode connected-agent`.
+- Let ChatGPT Web directly list/read/search allowed project content by default.
+- Tools include `open_workspace`, `ls`, `read`, `write`, `edit`, `grep`,
+  `glob`, `bash`, `enable_danger_auto`, `danger_auto_status`,
+  `disable_danger_auto`, `request_workspace_access`, and
+  `grant_workspace_access`.
 - High-risk credential paths are blocked by the server; other task-relevant
   project files may be inspected.
-- No writes.
-- No shell.
-- Risk `3/5-4/5`.
+- Write, edit, and bash require approval by default.
+- `dangerously trust connected agent` is a hidden danger switch inside
+  Connected Agent, not an additional product tier.
+- The hidden switch starts only after the user types that exact phrase in
+  ChatGPT Web.
+- When the hidden switch is active, safe project-local write/edit and safe
+  local bash may run automatically; network, browser/desktop, clipboard,
+  secret-path, path escape, dependency install, Git remote, and broad
+  destructive command classes are blocked or require approval.
+- Risk `3/5-5/5`; the hidden switch is fixed `5/5`.
 - If advisor channel is unavailable, wait for `user-web` or browser automation
   authorization.
 
-Level 3: Full-Agent Consult Session
+Legacy Full-Agent or high-risk connector wording maps to Connected Agent in V1.1 unless the
+user explicitly asks to test the deprecated `full-agent` alias.
 
-- Open `scripts/full_agent_session.py` only after explicit Level 3 request.
-- Require at least one allowed root.
-- Risk `5/5` while online.
-- Run an advisor-channel health gate before opening the `5/5` session:
-  confirm that ChatGPT Web is actually reachable through `direct-tool`,
-  `browser-automation`, or `user-web`.
-- Keep session online only during the current Codex task.
-- Touch after active consult steps.
-- Auto-close 20 minutes after the last Level 3 use.
-- Use a separate Full-Agent connector/scope from Auto MCP.
-- Use GPT-5.5 Thinking for ChatGPT Web connector calls. Do not use
-  GPT-5.5 Pro for MCP/App connector work because Pro models do not expose
-  ChatGPT Apps/MCP tools.
-- If ChatGPT Web cannot be reached by Codex, report
-  `waiting_for_advisor_channel` and do not create a fake manual success.
-- For product-review consultations, begin with an inspect-first prompt even
-  though the connector has broader tools. `write`, `edit`, and `bash` remain
-  available Full-Agent capabilities, but each such action must ask the user to
-  approve the exact file or command, intended change, and risk before tool use.
-  Prefer `scripts/level3_consultation_prompt.py`.
-- The default prompt lets ChatGPT Web choose task-relevant files under the
-  allowed root and requires it to report exactly what was listed, searched,
-  read, denied, or failed. Use `--file` only for a targeted fixed-file round.
+## Connected Agent Health Gate
 
-## Level 3 Health Gate
-
-Before opening a public Full-Agent window, Codex must establish the advisor
+Before opening a public Connected Agent window, Codex must establish the advisor
 channel:
 
 1. `direct-tool`: verify that a callable advisor/model channel is available.
@@ -135,15 +122,15 @@ channel:
 3. `user-web`: give the user one short prompt and wait for the user to confirm
    that ChatGPT Web is ready.
 
-Do not open the Full-Agent session while the only known state is a blank
+Do not open the Connected Agent session while the only known state is a blank
 ChatGPT page, browser automation timeout, stale connector page, or unknown web
 advisor state. In that case report:
 
 ```text
 Current state: waiting_for_advisor_channel
-Requested mode: full-agent
-Full-Agent session: not_open
-Risk if opened: 5/5
+Requested mode: connected-agent
+Connected Agent session: not_open
+Risk if opened: 3/5-5/5
 Reason: ChatGPT Web is not currently reachable as an advisor channel.
 Next options: restart/restore the browser, user triggers ChatGPT Web manually,
 or fall back to Ask First.
@@ -155,9 +142,9 @@ ask for user confirmation before restarting the browser. Do not restart the
 browser as an unprompted recovery step, because it can affect open tabs and
 unsaved web input.
 
-Once the advisor channel is healthy, Codex opens the Full-Agent window, performs
+Once the advisor channel is healthy, Codex opens the Connected Agent window, performs
 the consultation, imports the result, classifies recommendations, and lets the
-watchdog close the session 20 minutes after the last Level 3 use unless the
+watchdog close the session 20 minutes after the last Connected Agent use unless the
 user explicitly asks to close sooner.
 
 When the user or browser automation brings the ChatGPT Web answer back, capture
@@ -165,14 +152,14 @@ it before local review:
 
 ```bash
 python3 scripts/level3_consultation_flow.py capture \
-  --advisor chatgpt-web-full-agent \
-  "<original Level 3 question>"
+  --advisor chatgpt-web-connected-agent \
+  "<original Connected Agent question>"
 ```
 
 This stores the answer under `decision-inbox/level3-consultations/` and renders
 a review-only gate. It does not execute advisor instructions. The `capture`
 action refreshes the idle timer after saving the advice; the session remains
-open until 20 minutes after the last Level 3 use by default.
+open until 20 minutes after the last Connected Agent use by default.
 
 ## Local Helper
 
@@ -194,14 +181,14 @@ decision-inbox/tasks/<task-id>/advice/
 decision-inbox/tasks/<task-id>/fact-check-requests/
 ```
 
-Do not use this helper for Level 2 or Level 3. Those tiers expose workspace MCP
-tools directly and do not generate decision packages.
+Do not use this helper for Connected Agent. It exposes workspace MCP tools
+directly and does not generate decision packages.
 
-Use the side-effect-free product gate before opening Level 2 or Level 3:
+Use the side-effect-free product gate before opening Connected Agent:
 
 ```bash
 python3 scripts/conversation_product_gate.py \
-  --mode full-agent \
+  --mode connected-agent \
   --advisor-channel browser-automation \
   --advisor-health ready
 ```
@@ -210,7 +197,7 @@ If the gate returns `waiting_for_advisor_channel`, do not open the public MCP
 window yet. Restore ChatGPT Web, wait for the user to trigger `user-web`, or
 fall back to Ask First.
 
-For Level 3 user-facing status, prefer the combined readiness command:
+For Connected Agent user-facing status, prefer the combined readiness command:
 
 ```bash
 python3 scripts/level3_status.py \
@@ -218,10 +205,10 @@ python3 scripts/level3_status.py \
   --advisor-health needs-browser-restart
 ```
 
-This command does not open Full-Agent. It reports the product readiness gate,
-current Full-Agent session state, and current Tailscale Funnel state together.
+This command does not open Connected Agent. It reports the product readiness
+gate, current session state, and current Tailscale Funnel state together.
 
-For the normal user-facing Level 3 consultation path, prefer the bounded flow
+For the normal user-facing Connected Agent consultation path, prefer the bounded flow
 wrapper:
 
 ```bash
@@ -230,10 +217,10 @@ python3 scripts/level3_consultation_flow.py prepare \
   --public-base-url "https://your-public-host.example.com" \
   --advisor-channel user-web \
   --advisor-health ready \
-  "Review whether this project is ready for Level 3 use."
+  "Review whether this project is ready for Connected Agent use."
 ```
 
-The wrapper checks advisor readiness, opens the Full-Agent session, runs public
+The wrapper checks advisor readiness, opens the Connected Agent session, runs public
 health checks, copies the compact ChatGPT Web prompt, and refuses to continue
 if the public health result is not `stable`. It no longer assumes browser
 automation is ready by default; Codex must explicitly pass `user-web`,
@@ -247,8 +234,8 @@ same wrapper to capture the answer and refresh the 20-minute idle window:
 
 ```bash
 python3 scripts/level3_consultation_flow.py capture \
-  --advisor chatgpt-web-full-agent \
-  "<original Level 3 question>"
+  --advisor chatgpt-web-connected-agent \
+  "<original Connected Agent question>"
 ```
 
 Use `python3 scripts/level3_consultation_flow.py close` only when stopping
@@ -261,12 +248,12 @@ For the ChatGPT Web prompt after the connector chip is visible, prefer:
 python3 scripts/level3_consultation_prompt.py \
   --allowed-root "$PWD" \
   --clipboard \
-  "Review whether this project is ready for Level 3 use."
+  "Review whether this project is ready for Connected Agent use."
 ```
 
 The generated prompt tells ChatGPT to use GPT-5.5 Thinking rather than
-GPT-5.5 Pro for connector access, use only the Full-Agent connector, avoid
-Python/browser file checks, inspect before acting, ask for user approval before
+GPT-5.5 Pro for connector access, use only the Connected Agent connector, avoid
+Python/browser file checks, inspect before acting, respect approval gates for
 write/edit/bash, choose task-relevant project files under the allowed root,
 avoid high-risk credential paths, and report
 `Adopt`, `Ask`, and `Reject` recommendations. Use `--deep` or explicit `--file`
@@ -275,14 +262,14 @@ locally so browser automation or the user can paste it into ChatGPT without
 manually selecting terminal output.
 
 If browser automation cannot paste or send the prompt reliably, do not leave
-the `5/5` Full-Agent window open while retrying indefinitely. Either use a
+the Connected Agent window open while retrying indefinitely. Either use a
 short user-web handoff where the user presses send in ChatGPT Web, or close the
 window and report `waiting_for_advisor_channel`.
 
 For ordinary users, the expected handoff text is:
 
 ```text
-Open ChatGPT Web with GPT-5.5 Thinking selected and the Full-Agent connector attached.
+Open ChatGPT Web with GPT-5.5 Thinking selected and the Connected Agent connector attached.
 Paste and send the copied prompt.
 When ChatGPT finishes, paste the answer back into Codex.
 Codex will classify the advice as Adopt / Ask / Reject.
@@ -298,9 +285,9 @@ Use direct wording when the loop cannot be completed:
 
 ```text
 Current state: waiting_for_advisor_channel
-Requested mode: full-agent
-Full-Agent session: ready/not_open/failed
-Risk if opened: 5/5
+Requested mode: connected-agent
+Connected Agent session: ready/not_open/failed
+Risk if opened: 3/5-5/5
 Reason: Codex does not currently have a callable GPT Pro Web advisor channel.
 Next options: user triggers ChatGPT Web manually, authorize browser automation,
 or fall back to Ask First.

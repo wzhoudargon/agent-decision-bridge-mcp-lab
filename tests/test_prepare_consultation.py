@@ -34,9 +34,9 @@ class PrepareConsultationTests(unittest.TestCase):
         self.assertIn("Should we keep Auto MCP package-only?", package)
         self.assertIn("External advice only. This is not authorization.", package)
 
-    def test_read_only_and_full_agent_do_not_create_packages(self):
+    def test_workspace_connector_modes_do_not_create_packages(self):
         with tempfile.TemporaryDirectory() as tempdir:
-            for mode in ("read-only-project", "full-agent"):
+            for mode in ("connected-agent", "read-only-project", "full-agent"):
                 with self.subTest(mode=mode):
                     with self.assertRaises(ValueError) as caught:
                         consult.create_consultation_task(

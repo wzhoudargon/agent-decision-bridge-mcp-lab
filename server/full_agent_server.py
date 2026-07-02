@@ -4,8 +4,10 @@
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import sys
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -19,7 +21,10 @@ MAX_COMMAND_OUTPUT_BYTES = 200_000
 MAX_READ_FILE_BYTES = 200_000
 PROFILE_FULL_AGENT = "full-agent"
 PROFILE_READ_ONLY_PROJECT = "read-only-project"
-VALID_PROFILES = {PROFILE_FULL_AGENT, PROFILE_READ_ONLY_PROJECT}
+PROFILE_CONNECTED_AGENT = "connected-agent"
+VALID_PROFILES = {PROFILE_FULL_AGENT, PROFILE_READ_ONLY_PROJECT, PROFILE_CONNECTED_AGENT}
+DANGER_AUTO_PHRASE = "dangerously trust connected agent"
+DANGER_AUTO_IDLE_SECONDS = 1200
 SENSITIVE_PATH_SEGMENTS = {
     ".env",
     ".git",
@@ -63,6 +68,54 @@ SENSITIVE_COMMAND_MARKERS = (
     "credentials.json",
     "token.json",
 )
+NETWORK_OR_REMOTE_COMMANDS = {
+    "curl",
+    "wget",
+    "http",
+    "https",
+    "ssh",
+    "scp",
+    "rsync",
+    "nc",
+    "ncat",
+    "telnet",
+    "ftp",
+    "sftp",
+    "dig",
+    "nslookup",
+    "ping",
+    "traceroute",
+    "tailscale",
+    "cloudflared",
+    "ngrok",
+}
+GUI_OR_CLIPBOARD_COMMANDS = {
+    "open",
+    "osascript",
+    "pbcopy",
+    "pbpaste",
+    "screencapture",
+    "xclip",
+    "xsel",
+    "xdg-open",
+}
+GIT_REMOTE_COMMANDS = {"push", "pull", "fetch", "clone", "remote", "submodule"}
+PACKAGE_INSTALL_COMMANDS = {"install", "add", "i"}
+APPROVAL_COMMANDS = {
+    "rm",
+    "rmdir",
+    "mv",
+    "chmod",
+    "chown",
+    "chgrp",
+    "sudo",
+    "su",
+    "launchctl",
+}
+
+
+class ApprovalRequired(Exception):
+    """Raised when Connected Agent needs explicit user approval."""
 
 
 class AccessDenied(Exception):
@@ -79,19 +132,43 @@ class FullAgentWorkspaceManager:
             raise ValueError(f"Unknown workspace profile: {profile}")
         self.profile = profile
         self.allowed_roots = validate_allowed_roots(allowed_roots)
+        self.session_allowed_roots: List[Path] = []
         self.workspaces: Dict[str, Path] = {}
+        self.danger_auto_enabled = False
+        self.session_last_activity = time.time()
 
     @property
     def risk_level(self) -> str:
-        return "5/5" if self.profile == PROFILE_FULL_AGENT else "3/5-4/5"
+        if self.profile == PROFILE_FULL_AGENT:
+            return "5/5"
+        if self.profile == PROFILE_CONNECTED_AGENT:
+            return "5/5" if self.danger_auto_enabled else "3/5-5/5"
+        return "3/5-4/5"
 
     @property
     def tool_names(self) -> List[str]:
         if self.profile == PROFILE_READ_ONLY_PROJECT:
             return ["open_workspace", "ls", "read", "grep", "glob"]
+        if self.profile == PROFILE_CONNECTED_AGENT:
+            return [
+                "open_workspace",
+                "ls",
+                "read",
+                "write",
+                "edit",
+                "grep",
+                "glob",
+                "bash",
+                "enable_danger_auto",
+                "danger_auto_status",
+                "disable_danger_auto",
+                "request_workspace_access",
+                "grant_workspace_access",
+            ]
         return ["open_workspace", "ls", "read", "write", "edit", "grep", "glob", "bash"]
 
     def open_workspace(self, path_value: str) -> Dict[str, Any]:
+        self.touch()
         requested = self._resolve_requested_workspace(path_value)
         workspace_id = f"ws-{uuid.uuid4().hex}"
         self.workspaces[workspace_id] = requested
@@ -100,6 +177,14 @@ class FullAgentWorkspaceManager:
                 "Read-Only Project Advisor mode exposes project listing, reading, "
                 "glob, and grep only. It cannot write files or run shell commands. "
                 "Protected credential-like paths are blocked by the server."
+            )
+        elif self.profile == PROFILE_CONNECTED_AGENT:
+            warning = (
+                "Connected Agent exposes project read/search tools by default. "
+                "Write, edit, and bash require approval unless the user explicitly "
+                f"typed `{DANGER_AUTO_PHRASE}` and Danger Auto is active. "
+                "Protected credential-like paths and unsafe commands are blocked "
+                "by the server."
             )
         else:
             warning = (
@@ -118,6 +203,7 @@ class FullAgentWorkspaceManager:
         }
 
     def list_directory(self, workspace_id: str, path_value: str = ".") -> List[Dict[str, Any]]:
+        self.touch()
         target = self.resolve_workspace_path(workspace_id, path_value, must_exist=True)
         if not target.is_dir():
             raise AccessDenied("ls target must be a directory")
@@ -135,6 +221,7 @@ class FullAgentWorkspaceManager:
         return entries
 
     def read_file(self, workspace_id: str, path_value: str) -> str:
+        self.touch()
         target = self.resolve_workspace_path(workspace_id, path_value, must_exist=True)
         if not target.is_file():
             raise AccessDenied("read target must be a file")
@@ -144,7 +231,9 @@ class FullAgentWorkspaceManager:
         return target.read_text(encoding="utf-8")
 
     def write_file(self, workspace_id: str, path_value: str, content: str) -> Dict[str, Any]:
+        self.touch()
         self._require_full_agent_tool("write")
+        self._require_connected_write_approval("write")
         target = self.resolve_workspace_path(workspace_id, path_value, must_exist=False)
         self._assert_not_protected(target)
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -159,7 +248,9 @@ class FullAgentWorkspaceManager:
         replace: str,
         expected_replacements: Optional[int] = None,
     ) -> Dict[str, Any]:
+        self.touch()
         self._require_full_agent_tool("edit")
+        self._require_connected_write_approval("edit")
         target = self.resolve_workspace_path(workspace_id, path_value, must_exist=True)
         if not target.is_file():
             raise AccessDenied("edit target must be a file")
@@ -176,6 +267,7 @@ class FullAgentWorkspaceManager:
         return {"path": self.relative_path(workspace_id, target), "replacements": count}
 
     def glob_paths(self, workspace_id: str, pattern: str) -> List[str]:
+        self.touch()
         workspace = self.workspace(workspace_id)
         if not isinstance(pattern, str) or not pattern.strip():
             raise ValueError("pattern must be a non-empty string")
@@ -191,6 +283,7 @@ class FullAgentWorkspaceManager:
         return sorted(results)
 
     def grep(self, workspace_id: str, pattern: str, path_value: str = ".") -> List[Dict[str, Any]]:
+        self.touch()
         root = self.resolve_workspace_path(workspace_id, path_value, must_exist=True)
         if not isinstance(pattern, str) or not pattern:
             raise ValueError("pattern must be a non-empty string")
@@ -225,7 +318,9 @@ class FullAgentWorkspaceManager:
         cwd: str = ".",
         timeout_seconds: int = MAX_COMMAND_SECONDS,
     ) -> Dict[str, Any]:
+        self.touch()
         self._require_full_agent_tool("bash")
+        self._require_connected_write_approval("bash")
         if not isinstance(command, str) or not command.strip():
             raise ValueError("command must be a non-empty string")
         timeout = max(1, min(int(timeout_seconds), MAX_COMMAND_SECONDS))
@@ -233,7 +328,10 @@ class FullAgentWorkspaceManager:
         if not cwd_path.is_dir():
             raise AccessDenied("bash cwd must be a directory")
         self._assert_not_protected(cwd_path)
-        self._assert_bash_command_allowed(command)
+        if self.profile == PROFILE_CONNECTED_AGENT:
+            self._assert_connected_bash_auto_allowed(command)
+        else:
+            self._assert_bash_command_allowed(command)
         completed = subprocess.run(
             command,
             cwd=cwd_path,
@@ -251,6 +349,72 @@ class FullAgentWorkspaceManager:
             "stderr": stderr.decode("utf-8", errors="replace"),
             "risk_level": "5/5",
         }
+
+    def enable_danger_auto(self, phrase: str) -> Dict[str, Any]:
+        self._require_connected_agent_tool("enable_danger_auto")
+        self.touch()
+        if phrase.strip() != DANGER_AUTO_PHRASE:
+            raise AccessDenied(
+                "Danger Auto phrase was not accepted. The user must type the exact phrase."
+            )
+        self.danger_auto_enabled = True
+        self.session_last_activity = time.time()
+        return self.danger_auto_status()
+
+    def danger_auto_status(self) -> Dict[str, Any]:
+        self._require_connected_agent_tool("danger_auto_status")
+        self._expire_idle_session()
+        remaining = max(0, int(DANGER_AUTO_IDLE_SECONDS - (time.time() - self.session_last_activity)))
+        return {
+            "profile": self.profile,
+            "danger_auto_enabled": self.danger_auto_enabled,
+            "risk_level": "5/5" if self.danger_auto_enabled else "3/5-5/5",
+            "idle_timeout_seconds": DANGER_AUTO_IDLE_SECONDS,
+            "seconds_until_idle_close": remaining,
+            "temporary_allowed_roots": [str(root) for root in self.session_allowed_roots],
+            "danger_phrase": DANGER_AUTO_PHRASE,
+        }
+
+    def disable_danger_auto(self) -> Dict[str, Any]:
+        self._require_connected_agent_tool("disable_danger_auto")
+        self.touch()
+        self.danger_auto_enabled = False
+        return self.danger_auto_status()
+
+    def request_workspace_access(self, path_value: str, reason: str, access: str = "read") -> Dict[str, Any]:
+        self._require_connected_agent_tool("request_workspace_access")
+        self.touch()
+        requested = self._resolve_grantable_root(path_value)
+        return {
+            "status": "approval_required",
+            "path": str(requested),
+            "access": self._normalize_access(access),
+            "reason": reason,
+            "risk_level": "5/5",
+            "message": (
+                "Ask the user in chat to confirm temporary workspace access. "
+                "After the user confirms, call grant_workspace_access with the same path."
+            ),
+        }
+
+    def grant_workspace_access(self, path_value: str, access: str = "read") -> Dict[str, Any]:
+        self._require_connected_agent_tool("grant_workspace_access")
+        self.touch()
+        requested = self._resolve_grantable_root(path_value)
+        if not any(_is_relative_to(requested, root) for root in self.allowed_roots + self.session_allowed_roots):
+            self.session_allowed_roots.append(requested)
+        return {
+            "status": "granted",
+            "path": str(requested),
+            "access": self._normalize_access(access),
+            "risk_level": "5/5",
+            "temporary": True,
+            "expires_after_idle_seconds": DANGER_AUTO_IDLE_SECONDS,
+        }
+
+    def touch(self) -> None:
+        self._expire_idle_session()
+        self.session_last_activity = time.time()
 
     def workspace(self, workspace_id: str) -> Path:
         workspace = self.workspaces.get(workspace_id)
@@ -284,8 +448,12 @@ class FullAgentWorkspaceManager:
         requested = Path(path_value).expanduser().resolve(strict=True)
         if not requested.is_dir():
             raise AccessDenied("workspace path must be a directory")
-        if not any(_is_relative_to(requested, root) for root in self.allowed_roots):
-            raise AccessDenied("workspace path is outside configured allowed roots")
+        if not any(_is_relative_to(requested, root) for root in self._current_allowed_roots()):
+            raise AccessDenied(
+                "workspace path is outside configured allowed roots; call "
+                "request_workspace_access first, then grant_workspace_access only "
+                "after the user confirms in chat"
+            )
         return requested
 
     def _assert_under_workspace(self, workspace: Path, path: Path) -> None:
@@ -293,8 +461,19 @@ class FullAgentWorkspaceManager:
             raise AccessDenied("path escapes the opened workspace")
 
     def _require_full_agent_tool(self, tool_name: str) -> None:
-        if self.profile != PROFILE_FULL_AGENT:
+        if self.profile not in {PROFILE_FULL_AGENT, PROFILE_CONNECTED_AGENT}:
             raise AccessDenied(f"{tool_name} is not available in read-only-project mode")
+
+    def _require_connected_agent_tool(self, tool_name: str) -> None:
+        if self.profile != PROFILE_CONNECTED_AGENT:
+            raise AccessDenied(f"{tool_name} is only available in connected-agent mode")
+
+    def _require_connected_write_approval(self, tool_name: str) -> None:
+        if self.profile == PROFILE_CONNECTED_AGENT and not self.danger_auto_enabled:
+            raise ApprovalRequired(
+                f"{tool_name} requires user approval in Connected Agent default mode. "
+                f"If the user wants controlled auto-execution for this session, they must type: {DANGER_AUTO_PHRASE}"
+            )
 
     def _assert_read_allowed(self, path: Path) -> None:
         self._assert_not_protected(path)
@@ -310,6 +489,92 @@ class FullAgentWorkspaceManager:
                 "bash command appears to reference protected credential-like material"
             )
 
+    def _assert_connected_bash_auto_allowed(self, command: str) -> None:
+        self._assert_bash_command_allowed(command)
+        lowered = command.lower()
+        if "http://" in lowered or "https://" in lowered:
+            raise AccessDenied("Danger Auto blocks bash commands that reference network URLs")
+        if any(marker in lowered for marker in ("$home", "${home}", "~/", " ~", "../", "/..")):
+            raise AccessDenied("Danger Auto blocks bash commands with obvious path escape markers")
+        try:
+            tokens = shlex.split(command, posix=True)
+        except ValueError as exc:
+            raise ApprovalRequired(f"bash command needs explicit approval: could not parse shell tokens ({exc})") from exc
+        lowered_tokens = [token.lower() for token in tokens]
+        command_names = {
+            Path(token).name.lower()
+            for token in lowered_tokens
+            if token and not token.startswith("-") and token not in {"&&", "||", ";", "|"}
+        }
+        blocked = sorted(command_names.intersection(NETWORK_OR_REMOTE_COMMANDS | GUI_OR_CLIPBOARD_COMMANDS))
+        if blocked:
+            raise AccessDenied(
+                "Danger Auto blocks network, browser/desktop, and clipboard commands: "
+                + ", ".join(blocked)
+            )
+        if command_names.intersection(APPROVAL_COMMANDS):
+            raise ApprovalRequired(
+                "Danger Auto requires explicit approval for deletion, moves, permission changes, or privileged commands"
+            )
+        if self._needs_install_approval(lowered_tokens):
+            raise ApprovalRequired("Danger Auto requires explicit approval before installing dependencies")
+        if self._needs_git_remote_approval(lowered_tokens):
+            raise ApprovalRequired("Danger Auto requires explicit approval for Git remote operations")
+        if "-delete" in lowered_tokens:
+            raise ApprovalRequired("Danger Auto requires explicit approval for find -delete style operations")
+        for token in tokens:
+            path_token = token.strip("'\"")
+            if not path_token.startswith("/"):
+                continue
+            resolved = Path(path_token).expanduser().resolve(strict=False)
+            if not any(_is_relative_to(resolved, root) for root in self._current_allowed_roots()):
+                raise AccessDenied(
+                    "Danger Auto blocks bash commands that reference absolute paths outside allowed roots"
+                )
+
+    def _needs_install_approval(self, tokens: List[str]) -> bool:
+        for index, token in enumerate(tokens):
+            command = Path(token).name
+            following = tokens[index + 1 :]
+            if command in {"npm", "pnpm", "yarn"} and following:
+                if following[0] in PACKAGE_INSTALL_COMMANDS:
+                    return True
+            if command in {"pip", "pip3"} and following:
+                if following[0] == "install":
+                    return True
+            if command in {"python", "python3"} and len(following) >= 3:
+                if following[:3] in (["-m", "pip", "install"], ["-m", "uv", "pip"]):
+                    return True
+            if command == "uv" and following:
+                if following[0] in {"add", "pip", "sync"}:
+                    return True
+            if command == "poetry" and following:
+                if following[0] in {"add", "install"}:
+                    return True
+            if command == "brew" and following:
+                if following[0] in {"install", "upgrade"}:
+                    return True
+            if command == "cargo" and following:
+                if following[0] == "install":
+                    return True
+            if command == "go" and following:
+                if following[0] in {"get", "install"}:
+                    return True
+            if command == "gem" and following:
+                if following[0] == "install":
+                    return True
+        return False
+
+    def _needs_git_remote_approval(self, tokens: List[str]) -> bool:
+        for index, token in enumerate(tokens):
+            if Path(token).name != "git":
+                continue
+            for item in tokens[index + 1 :]:
+                if item.startswith("-"):
+                    continue
+                return item in GIT_REMOTE_COMMANDS
+        return False
+
     def _is_protected_path(self, path: Path) -> bool:
         lowered_parts = [part.lower() for part in path.parts]
         lowered_name = path.name.lower()
@@ -320,6 +585,32 @@ class FullAgentWorkspaceManager:
         if path.suffix.lower() in SENSITIVE_SUFFIXES:
             return True
         return any(segment in lowered_parts for segment in SENSITIVE_PATH_SEGMENTS)
+
+    def _current_allowed_roots(self) -> List[Path]:
+        return self.allowed_roots + self.session_allowed_roots
+
+    def _expire_idle_session(self) -> None:
+        if time.time() - self.session_last_activity <= DANGER_AUTO_IDLE_SECONDS:
+            return
+        self.danger_auto_enabled = False
+        self.session_allowed_roots.clear()
+
+    def _resolve_grantable_root(self, path_value: str) -> Path:
+        if not isinstance(path_value, str) or not path_value.strip():
+            raise AccessDenied("workspace access path must be a non-empty string")
+        requested = Path(path_value).expanduser().resolve(strict=True)
+        if not requested.is_dir():
+            raise AccessDenied("workspace access path must be a directory")
+        if self._is_protected_path(requested):
+            raise AccessDenied("workspace access path is protected from connector exposure")
+        validate_allowed_roots([requested])
+        return requested
+
+    def _normalize_access(self, value: str) -> str:
+        access = (value or "read").strip().lower()
+        if access not in {"read", "write", "execute"}:
+            raise ValueError("access must be one of: read, write, execute")
+        return access
 
 
 def validate_allowed_roots(roots: List[Path]) -> List[Path]:
@@ -441,6 +732,79 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
             "additionalProperties": False,
         },
     }
+    connected_tools = [
+        {
+            "name": "enable_danger_auto",
+            "title": "Enable Danger Auto",
+            "description": (
+                "Enable session-only Connected Agent Danger Auto after the user typed "
+                "the exact danger phrase. The model must not fabricate this phrase."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {"phrase": {"type": "string"}},
+                "required": ["phrase"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "danger_auto_status",
+            "title": "Danger Auto Status",
+            "description": "Return Connected Agent Danger Auto status and idle timeout.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "disable_danger_auto",
+            "title": "Disable Danger Auto",
+            "description": "Disable Connected Agent Danger Auto for this session.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "request_workspace_access",
+            "title": "Request Workspace Access",
+            "description": (
+                "Prepare a user-visible request for temporary access to a project "
+                "directory outside the configured allowed roots."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "reason": {"type": "string"},
+                    "access": {"type": "string", "enum": ["read", "write", "execute"]},
+                },
+                "required": ["path", "reason"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "grant_workspace_access",
+            "title": "Grant Workspace Access",
+            "description": (
+                "Temporarily add a confirmed project directory to this session's "
+                "allowed roots. Use only after the user confirms in chat."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "access": {"type": "string", "enum": ["read", "write", "execute"]},
+                },
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+        },
+    ]
+    if profile == PROFILE_CONNECTED_AGENT:
+        return base_tools + execution_tools + search_tools + [bash_tool] + connected_tools
     return base_tools + execution_tools + search_tools + [bash_tool]
 
 
@@ -511,9 +875,33 @@ def _call_tool(params: Dict[str, Any], manager: FullAgentWorkspaceManager) -> Di
                 arguments.get("timeout_seconds", MAX_COMMAND_SECONDS),
             )
             return _tool_result(json.dumps(result, indent=2), result)
+        if name == "enable_danger_auto":
+            result = manager.enable_danger_auto(_required_string(arguments, "phrase"))
+            return _tool_result(json.dumps(result, indent=2), result)
+        if name == "danger_auto_status":
+            result = manager.danger_auto_status()
+            return _tool_result(json.dumps(result, indent=2), result)
+        if name == "disable_danger_auto":
+            result = manager.disable_danger_auto()
+            return _tool_result(json.dumps(result, indent=2), result)
+        if name == "request_workspace_access":
+            result = manager.request_workspace_access(
+                _required_string(arguments, "path"),
+                _required_string(arguments, "reason"),
+                arguments.get("access", "read"),
+            )
+            return _tool_result(json.dumps(result, indent=2), result)
+        if name == "grant_workspace_access":
+            result = manager.grant_workspace_access(
+                _required_string(arguments, "path"),
+                arguments.get("access", "read"),
+            )
+            return _tool_result(json.dumps(result, indent=2), result)
         return _tool_error(f"Unknown tool: {name}")
+    except ApprovalRequired as exc:
+        return _tool_error(f"Approval required: {exc}", {"error": "approval_required", "reason": str(exc)})
     except (AccessDenied, WorkspaceNotFound, FileNotFoundError) as exc:
-        return _tool_error(f"Access denied: {exc}")
+        return _tool_error(f"Access denied: {exc}", {"error": "access_denied", "reason": str(exc)})
     except (ValueError, TypeError, subprocess.TimeoutExpired) as exc:
         return _tool_error(str(exc))
 
@@ -533,14 +921,23 @@ def _initialize_result(
             "title": (
                 "Agent Decision Bridge Full-Agent"
                 if manager.profile == PROFILE_FULL_AGENT
-                else "Agent Decision Bridge Read-Only Project Advisor"
+                else (
+                    "Agent Decision Bridge Connected Agent"
+                    if manager.profile == PROFILE_CONNECTED_AGENT
+                    else "Agent Decision Bridge Read-Only Project Advisor"
+                )
             ),
             "version": SERVER_VERSION,
             "description": (
                 "High-risk local coding MCP server with file and shell tools. "
                 "Protected credential-like paths are blocked by default."
                 if manager.profile == PROFILE_FULL_AGENT
-                else "Read-only project advisor MCP server with protected path filtering."
+                else (
+                    "Connected Agent MCP server with project tools, approval gates, "
+                    "Danger Auto, and protected path filtering."
+                    if manager.profile == PROFILE_CONNECTED_AGENT
+                    else "Read-only project advisor MCP server with protected path filtering."
+                )
             ),
         },
         "instructions": (
@@ -549,11 +946,23 @@ def _initialize_result(
             "5/5. Protected credential-like paths are blocked by default, but shell "
             "commands run as the local user, not in a security sandbox."
             if manager.profile == PROFILE_FULL_AGENT
-            else "Read-Only Project Advisor mode can list, read, glob, and grep "
-            "opened workspaces under configured allowed roots. It cannot write files "
-            "or run shell commands. Protected credential-like paths are blocked."
+            else (
+                "Connected Agent mode can read and search opened workspaces under "
+                "configured allowed roots by default. Write, edit, and bash require "
+                f"user approval unless the user typed `{DANGER_AUTO_PHRASE}` and "
+                "enable_danger_auto is active. The model must not fabricate the "
+                "danger phrase. Danger Auto is still server-filtered: credential "
+                "paths, network commands, GUI/clipboard commands, path escapes, Git "
+                "remote operations, dependency installs, and broad destructive "
+                "commands are blocked or require explicit approval."
+                if manager.profile == PROFILE_CONNECTED_AGENT
+                else "Read-Only Project Advisor mode can list, read, glob, and grep "
+                "opened workspaces under configured allowed roots. It cannot write files "
+                "or run shell commands. Protected credential-like paths are blocked."
+            )
         ),
         "allowed_roots": [str(root) for root in manager.allowed_roots],
+        "temporary_allowed_roots": [str(root) for root in manager.session_allowed_roots],
         "profile": manager.profile,
         "risk_level": manager.risk_level,
     }
@@ -620,8 +1029,11 @@ def _tool_result(text: str, structured: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _tool_error(message: str) -> Dict[str, Any]:
-    return {"isError": True, "content": [{"type": "text", "text": message}]}
+def _tool_error(message: str, structured: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    payload = {"isError": True, "content": [{"type": "text", "text": message}]}
+    if structured is not None:
+        payload["structuredContent"] = structured
+    return payload
 
 
 def _response(request_id: Any, result: Dict[str, Any]) -> Dict[str, Any]:
