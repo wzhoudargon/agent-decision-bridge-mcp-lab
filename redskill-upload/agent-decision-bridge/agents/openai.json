@@ -1,0 +1,7 @@
+{
+  "interface": {
+    "display_name": "codex外接最强助理",
+    "short_description": "Ask First + Connected Agent 快启动，把 ChatGPT Web 接入 Codex",
+    "default_prompt": "Use $agent-decision-bridge to prepare an Ask First review package, or start a compact Connected Agent consultation with ChatGPT Web while Codex keeps local verification and execution control."
+  }
+}

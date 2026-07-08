@@ -1,6 +1,6 @@
 ---
 name: codex外接最强助理
-description: 把 ChatGPT 网页端变成 Codex 的外部 Agent：Pro 做深度咨询，Thinking 接 MCP 工具，Codex 保留本地验证和执行。
+description: 把 ChatGPT 网页端变成 Codex 的外部 Agent：Ask First 做深度咨询，Connected Agent 快速接入项目，Codex 保留本地验证和执行。
 ---
 
 # Agent Decision Bridge
@@ -21,6 +21,7 @@ https://github.com/wzhoudargon/agent-decision-bridge-mcp-lab
 
 - 第一档：Ask First，Codex 生成决策包，用户手动交给 GPT Pro / Claude / Gemini / 其他模型评审，风险最低。
 - 第二档：Connected Agent，网页端可连接到用户授权的项目目录；默认读、搜索、列目录；写入、编辑、bash 会返回一次性 `approval_id`，用户在 ChatGPT Web 里确认后即可继续执行该次动作。
+- 第二档快启动：当前 MCP Lab 已加入 `connected_agent_flow.py` 产品入口，默认使用 `--speed fast --output compact`，用一屏状态卡完成 advisor gate、短窗口打开、健康检查和 prompt 准备；`--speed safe --output verbose` 只用于首次配置、tunnel 验证或排障。
 - 隐藏危险开关：`dangerously trust connected agent` 不是独立档位，只是 Connected Agent 内部的高风险开关；用户明确输入后，本次 session 可临时自动执行部分项目内写入、编辑和安全本地 bash，但仍受本地硬拦截限制。
 
 外部模型的输出始终只是建议，不是授权；Codex 仍负责本地事实核查、采纳/询问/拒绝分类，以及最终执行。
@@ -41,11 +42,50 @@ https://github.com/wzhoudargon/agent-decision-bridge-mcp-lab
 - Pinggy：适合轻量一次性 tunnel。优点是启动快；缺点是长期稳定性和产品化体验不如自有域名方案。
 - 自管 HTTPS 反代：适合高级用户或团队。优点是控制力最强；缺点是需要自己处理 TLS、鉴权、日志和安全配置。
 
+## 本次版本更新重点
+
+这版主要把第二档从“安全实验流程”推进到“可日常使用的产品入口”：
+
+- 新增推荐入口：`scripts/connected_agent_flow.py prepare/capture/close`。
+- 默认快启动：`--speed fast --output compact`。
+- 保留安全验证模式：`--speed safe --output verbose`。
+- 默认输出一屏状态卡，不再每次复述完整安全模型。
+- 状态卡只保留用户需要立即判断的信息：Connected Agent 状态、advisor channel、workspace、在线风险、当前步骤、下一步动作。
+- `capture` 默认只保存外部建议并刷新 20 分钟 idle window，不把外部模型建议当成执行授权。
+- runtime skill 更新仍走 suggest-only：任何写入 `~/.codex/skills/agent-decision-bridge/SKILL.md` 的长期规则变更，都需要用户确认后再应用。
+
+推荐状态卡格式：
+
+```text
+Connected Agent: starting / ready_for_advisor / waiting_for_advisor_channel / closed
+Advisor channel: user-web / browser-automation / direct-tool / unknown
+Workspace: <allowed root>
+Risk while online: 3/5-5/5; Danger Auto 5/5
+Speed profile: fast
+Current step: prepare / web-consult / capture / idle-wait / close
+Next action: <who does what next>
+```
+
+普通用户的精确入口：
+
+```text
+codex外接最强助理第二档：帮我咨询 ChatGPT Web <问题>
+```
+
+Codex 应该尽量直接推进到状态卡和下一步动作，而不是停在长篇解释。只有在首次开公网入口、advisor channel 不明、启用浏览器自动化、请求写入/编辑/bash、或用户询问风险时，才展开完整安全说明。
+
 ## Conversation Product Mode
 
 Use when the user asks Codex to "consult", "ask GPT Pro", "use Auto MCP",
-"use Level 2", "use Full-Agent", "use the high-risk connector", or otherwise expects the
+"use Full-Agent", "use the high-risk connector", says the exact alias
+`codex外接最强助理第二档`, says `打开codex 助理 skill 第二档`, or otherwise expects the
 bridge to run as a product workflow instead of a manual copy-paste package.
+
+Alias rule: `codex外接最强助理第二档` is the high-confidence exact trigger for
+`agent-decision-bridge` Connected Agent mode. If the user says
+`打开codex 助理 skill 第二档` or another nearby phrase that clearly refers to
+this same product and its second tier, infer Connected Agent. Do not map vague
+Codex permission wording to this skill unless the product context is clear.
 
 First identify the requested product tier. There are only two current product
 tiers:
@@ -81,8 +121,9 @@ If a product workflow fails before a real advisor answer returns, explicitly
 say: `GPT Pro has not been consulted yet; the system is still preparing or
 waiting.`
 
-If the user requested Connected Agent, old Level 2, old high-risk connector wording, Full-Agent,
-or "make ChatGPT Web act like Codex":
+If the user requested Connected Agent, `codex外接最强助理第二档`,
+`打开codex 助理 skill 第二档`, old high-risk connector wording, Full-Agent, or
+"make ChatGPT Web act like Codex":
 
 1. Do not create a decision package.
 2. State the risk: `3/5-5/5`; if the hidden danger switch is active, fixed
@@ -92,10 +133,26 @@ or "make ChatGPT Web act like Codex":
 4. For ChatGPT Web connector calls, use a model/chat surface that exposes
    Apps/MCP tools. If a selected model cannot see connector tools, tell the
    user to switch to a tool-capable Thinking chat or use Ask First.
-5. Use `scripts/full_agent_session.py open/status/touch/close` when present.
-   Despite the legacy filename, the default session mode is Connected Agent.
-6. Default Connected Agent can use `open_workspace`, `ls`, `read`, `grep`, and
-   `glob` automatically. `write`, `edit`, and `bash` return a one-action
+5. Opening Connected Agent means opening or verifying the short-lived public
+   session window for the authorized root, not only probing already-visible
+   connector tools. Use `scripts/full_agent_session.py open/status/touch/close`
+   when present, run public health verification, and treat a closed or stale
+   public window as a setup state to reopen before asking ChatGPT Web to inspect
+   the project. Despite the legacy filename, the default session mode is
+   Connected Agent.
+6. Default Connected Agent should open the authorized workspace without sending
+   a local absolute path through ChatGPT Web. Prefer `open_default_workspace()`
+   when the tool is visible. If ChatGPT Web still exposes a stale schema without
+   `open_default_workspace`, use `open_workspace` with path exactly `"default"`
+   as the no-local-path compatibility alias. Do not ask ChatGPT Web to pass
+   `/Users/...` paths unless Codex explicitly instructs that in the same
+   ChatGPT-side prompt. After opening, `ls`, `read`, `read_lines`, `grep`, and
+   `glob` are automatic. Whole-file `read` is for task-relevant UTF-8 files up
+   to the server limit; for larger source files, use targeted `grep` plus
+   `read_lines` bounded line ranges. Do not waste advisor context on
+   `node_modules`, `dist`/build outputs, sourcemaps, image galleries, or
+   lockfile-sized dependency artifacts unless the task explicitly requires
+   them. `write`, `edit`, and `bash` return a one-action
    `approval_id`; ask the user to approve that exact action in ChatGPT Web,
    call `grant_action_approval`, then retry the original tool call once with
    that `approval_id`.
@@ -126,19 +183,36 @@ or "make ChatGPT Web act like Codex":
    Next options: user triggers ChatGPT Web manually, authorize browser automation,
    or fall back to Ask First.
    ```
-12. If the current workspace contains `scripts/level3_consultation_flow.py`,
-   prefer the bounded helper flow:
-   - Run `scripts/level3_consultation_flow.py prepare` only after the advisor
+12. If the current workspace contains `scripts/connected_agent_flow.py`, prefer
+   that product-name wrapper. If only `scripts/level3_consultation_flow.py`
+   exists, use it as the legacy compatibility wrapper.
+   - Run `scripts/connected_agent_flow.py prepare` only after the advisor
      channel is confirmed as `user-web`, `browser-automation`, or `direct-tool`
      with health `ready`.
+   - For routine product use, keep the default `--speed fast --output compact`.
+     Use `--speed safe --output verbose` for first-time setup, tunnel
+     verification, unstable public health, or debugging.
+   - Show the compact status card by default. Do not re-explain the whole
+     safety model unless the user is changing product tier, opening a public
+     endpoint for the first time, enabling browser automation, requesting
+     write/edit/bash, or asking about risk.
    - Do not open the Connected Agent session while the advisor channel is
      `unknown`.
+   - For a second-tier open request, `prepare` must open or verify the public
+     session window for the authorized root and run the public health check
+     before any web-advisor prompt or connector inspection.
    - If public health is not stable, close the window and report that the web
      advisor has not been consulted yet.
    - The default ChatGPT Web prompt should not name a fixed three-file package.
-     Let the advisor inspect task-relevant files under the allowed root using
-     `ls`, `glob`, `grep`, and `read`, while the server hard-blocks high-risk
-     credential paths.
+     Let the advisor open the workspace with `open_default_workspace()` or,
+     for stale connector schemas, `open_workspace` path `"default"`, then
+     inspect task-relevant source files under the allowed root using `ls`,
+     `glob`, `grep`, `read`, and `read_lines`, while the server hard-blocks
+     high-risk credential paths. The prompt should tell ChatGPT Web to skip
+     `node_modules`, `dist`/build outputs, sourcemaps, image galleries, and
+     lockfile-sized dependency artifacts unless the task explicitly requires
+     them. Do not put local absolute workspace paths in the ChatGPT Web prompt
+     unless this Codex conversation explicitly authorizes that.
    - Require the advisor to report exactly which files were listed, searched,
      read, denied, or failed.
    - Inspect first. `write`, `edit`, and `bash` are Connected Agent
@@ -150,14 +224,14 @@ or "make ChatGPT Web act like Codex":
      switch is already active, the server policy decides whether the action can
      run automatically, must ask, or must be denied.
    - After ChatGPT Web returns an answer, run
-     `scripts/level3_consultation_flow.py capture` to save advice as external
+     `scripts/connected_agent_flow.py capture` to save advice as external
      review data, refresh the 20-minute idle window by default, and then
      classify recommendations as `Adopt`, `Ask`, or `Reject`.
    - Do not close immediately after a successful capture unless the user asks
      for immediate shutdown. Let the watchdog close the session 20 minutes
      after the last Connected Agent use.
    - If the user asks to stop early, close with
-     `scripts/level3_consultation_flow.py close` and report the final risk
+     `scripts/connected_agent_flow.py close` and report the final risk
      state.
 13. Connected Agent is not a Codex-owned GPT Pro API call. It is a ChatGPT Web
    connector plus an advisor channel. If Codex has no direct advisor tool and browser
