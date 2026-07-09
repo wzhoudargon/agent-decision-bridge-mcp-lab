@@ -115,10 +115,6 @@ would centralize security, privacy, uptime, and abuse risk in one account.
   production credentials to a web model.
 
 For current public wording, use [`docs/user-guide.md`](docs/user-guide.md).
-The older Chinese launch draft in
-[`docs/archive/product-promotion.zh.md`](docs/archive/product-promotion.zh.md)
-is retained as historical material and may contain superseded model or mode
-names.
 
 The default goal is not to let ChatGPT Web or another external model freely edit
 local projects. The default goal is to reduce repetitive copy-paste while

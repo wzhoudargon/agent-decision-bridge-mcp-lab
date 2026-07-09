@@ -14,6 +14,8 @@ across the repository.
   `docs/connected-agent-user-flow.md`.
 - Moved superseded tiered-mode drafts and older live-verification notes into
   `docs/archive/`.
+- Removed platform-upload packaging and promotional card assets from repository
+  tracking so the GitHub repository stays focused on Agent Decision Bridge.
 - Removed stale model/version wording from current docs and user-visible
   helper output.
 - Added the `scripts/connected_agent_flow.py` product wrapper as the preferred

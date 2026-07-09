@@ -28,6 +28,11 @@ cloudflared/
 NEXT_THREAD_PROMPT.md
 
 # Local marketing/export artifacts
+redskill-upload/
+agent-decision-bridge-video-production/
+figma-agent-decision-bridge-video-assets/
+figma-agent-decision-bridge-video-boards/
+social-card-codex-external-agent-cover/
 xhs-codex-external-agent/
 xhs-codex-external-agent*/
 social-card-codex-external-agent-cover/output/
