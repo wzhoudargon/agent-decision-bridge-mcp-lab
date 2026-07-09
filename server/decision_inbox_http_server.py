@@ -1240,7 +1240,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("Risk coefficient: 3/5-4/5")
         print(
             "Risk reason: read-only-project exposes protected project listing, "
-            "file reads, glob, and grep to the connected MCP client."
+            "file reads, read_lines, glob, and grep to the connected MCP client."
         )
         print(
             "Allowed roots: "

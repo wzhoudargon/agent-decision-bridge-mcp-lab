@@ -111,7 +111,7 @@ def summarize_state(session_output: str, funnel_output: str, gate_message: str) 
         lines.append("Exposure now: session closed; inspect Funnel status below.")
 
     lines.append(
-        "Normal flow: prepare -> GPT-5.5 Thinking with connector -> capture -> 20-minute idle close."
+        "Normal flow: prepare -> ChatGPT Web with Connected Agent connector -> capture -> 20-minute idle close."
     )
     return "\n".join(lines)
 

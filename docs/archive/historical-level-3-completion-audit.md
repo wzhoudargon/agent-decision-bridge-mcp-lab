@@ -88,9 +88,9 @@ Codex should then:
 1. report `Risk while open: 5/5`,
 2. confirm the current project as the allowed root,
 3. verify that an advisor channel is ready,
-4. run `scripts/level3_consultation_flow.py prepare`,
+4. run `scripts/connected_agent_flow.py prepare`,
 5. ask ChatGPT Web with GPT-5.5 Thinking selected to use the Full-Agent connector,
-6. capture the returned answer with `scripts/level3_consultation_flow.py capture`,
+6. capture the returned answer with `scripts/connected_agent_flow.py capture`,
 7. classify recommendations as `Adopt`, `Ask`, or `Reject`,
 8. let the 20-minute idle watchdog close the session unless the user asks to
    close it immediately.
@@ -109,7 +109,7 @@ Next action: <user or Codex action>
 The preferred product path after the answer returns is now:
 
 ```bash
-python3 scripts/level3_consultation_flow.py capture \
+python3 scripts/connected_agent_flow.py capture \
   --advisor chatgpt-web-full-agent \
   "<original question>"
 ```
@@ -140,10 +140,11 @@ This captures the answer and refreshes the 20-minute idle window by default.
    wrapper/capture flow and false-success guardrails.
 
 5. User-facing polish:
-   Three capture-backed live proofs now exist. The remaining work is product
-   polish: keep the Level 3 trigger as a simple phrase, print the compact state
-   card by default, and keep browser automation clearly labeled as occupying
-   the user's computer while it runs.
+   Three capture-backed live proofs now exist. The wrapper now has a product
+   fast path: `scripts/connected_agent_flow.py prepare` defaults to
+   `--speed fast --output compact`, while the older conservative probe profile
+   remains available as `--speed safe --output verbose`. Browser automation
+   must still be clearly labeled as occupying the user's computer while it runs.
 
 ## Stop Condition Before "Mature"
 
@@ -154,7 +155,7 @@ Do not report Level 3 as mature until all of these are true:
    when idle or stable while intentionally open.
 3. Tailscale Funnel or the selected public tunnel closes cleanly after the task.
 4. A real ChatGPT Web answer has been captured through
-   `scripts/level3_consultation_flow.py capture`.
+   `scripts/connected_agent_flow.py capture`.
 5. Codex has produced an `Adopt` / `Ask` / `Reject` review from that captured
    answer.
 6. The final response clearly states whether the user still needs to touch

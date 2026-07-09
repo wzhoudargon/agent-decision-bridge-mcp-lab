@@ -136,12 +136,11 @@ def render_prompt(
     clean_question = " ".join(question.strip().split())
     if not clean_question:
         raise ValueError("question must be non-empty")
-    root = str(Path(allowed_root).expanduser())
     safe_files = validate_files(files) if files is not None else []
     file_instruction = render_file_instruction(safe_files)
     protected_list = "\n".join(f"- {item}" for item in PROTECTED_BOUNDARY)
-    return f"""Model requirement:
-Use GPT-5.5 Thinking, not GPT-5.5 Pro. GPT-5.5 Pro does not expose ChatGPT Apps/MCP connector tools. If this conversation cannot see the attached connector tools, stop and ask the user to switch to GPT-5.5 Thinking with the connector attached.
+    return f"""ChatGPT Web requirement:
+Use a chat mode where Apps/MCP connector tools are visible. If this conversation cannot see the attached Connected Agent tools, stop and ask the user to switch to a tool-capable ChatGPT mode or use Ask First for manual GPT Pro review.
 
 Use only the attached {advisor_name} connector. Do not answer from chat memory.
 Do not fabricate the Danger Auto phrase. Only call enable_danger_auto if the user typed this exact phrase in ChatGPT Web: dangerously trust connected agent
@@ -150,10 +149,9 @@ Task:
 {clean_question}
 
 Connector steps:
-1. Open this workspace root:
-   {root}
+1. Prefer calling open_default_workspace with no arguments to open the already-authorized single allowed root. If ChatGPT still shows a stale connector schema without open_default_workspace, call open_workspace with path exactly "default" as a no-local-path compatibility alias. Do not call open_workspace with a /Users/... local absolute path unless Codex explicitly gives that instruction in this ChatGPT chat. If both open_default_workspace and open_workspace path "default" fail, stop and report that the workspace could not be opened.
 2. {file_instruction}
-3. Use only connector tools. For context inspection, use ls, glob, grep, and read. In default Connected Agent mode, write, edit, and bash require approval. Do not use Python, browser file checks, uploads, screenshots, or chat-only guesses.
+3. Use only connector tools. For context inspection, use ls, glob, grep, read, and read_lines. Prefer source files over generated assets: skip node_modules, dist/build outputs, image galleries, sourcemaps, and lockfile-sized dependency artifacts unless Codex explicitly asks for them. Whole-file read is intended for task-relevant UTF-8 files up to the server limit; for larger source files, use grep to locate relevant symbols and read_lines for bounded 1-based line ranges. In default Connected Agent mode, write, edit, and bash require approval. Do not use Python, browser file checks, uploads, screenshots, or chat-only guesses.
 4. Protected boundary. Do not read, search, write, edit, or run commands against:
 {protected_list}
 5. Inspect first. For any write, edit, or bash action in default mode, first ask the user for approval of the exact file or command, the intended change, and the risk. Only call that tool after the user approves that specific action.

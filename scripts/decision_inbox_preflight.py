@@ -44,13 +44,16 @@ FULL_AGENT_TOOL_NAMES = [
     "open_workspace",
     "ls",
     "read",
+    "read_lines",
     "write",
     "edit",
     "grep",
     "glob",
     "bash",
 ]
-CONNECTED_AGENT_TOOL_NAMES = FULL_AGENT_TOOL_NAMES + [
+CONNECTED_AGENT_TOOL_NAMES = [
+    "open_default_workspace",
+] + FULL_AGENT_TOOL_NAMES + [
     "enable_danger_auto",
     "danger_auto_status",
     "disable_danger_auto",
@@ -62,6 +65,7 @@ READ_ONLY_PROJECT_TOOL_NAMES = [
     "open_workspace",
     "ls",
     "read",
+    "read_lines",
     "grep",
     "glob",
 ]

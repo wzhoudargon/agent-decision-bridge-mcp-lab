@@ -44,7 +44,7 @@ class Level3StatusTests(unittest.TestCase):
         self.assertIn("Can use now: not yet.", output)
         self.assertIn("Exposure now: closed.", output)
         self.assertIn(
-            "Normal flow: prepare -> GPT-5.5 Thinking with connector -> capture -> 20-minute idle close.",
+            "Normal flow: prepare -> ChatGPT Web with Connected Agent connector -> capture -> 20-minute idle close.",
             output,
         )
         self.assertIn("Connected Agent readiness:", output)

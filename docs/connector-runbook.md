@@ -1,6 +1,6 @@
 # Agent Decision Bridge Connector Runbook
 
-This runbook captures connector hygiene for Ask First and V1.1 Connected Agent.
+This runbook captures connector hygiene for Ask First and Connected Agent.
 Legacy Read-Only Project Advisor and Full-Agent Execution remain documented only
 as deprecated compatibility aliases.
 
@@ -330,9 +330,11 @@ python3 server/decision_inbox_http_server.py \
 Expected tools:
 
 ```text
+open_default_workspace
 open_workspace
 ls
 read
+read_lines
 write
 edit
 grep
@@ -354,7 +356,17 @@ files may be inspected by the advisor.
 
 Default behavior:
 
+- when exactly one allowed root is configured, ChatGPT should call
+  `open_default_workspace` first instead of passing a local absolute path to
+  `open_workspace`,
+- if ChatGPT still exposes a stale connector schema without
+  `open_default_workspace`, call `open_workspace` with path exactly `"default"`
+  as the no-local-path compatibility alias,
 - read/search/list are automatic inside opened allowed roots,
+- whole-file `read` is for task-relevant UTF-8 files up to 1 MB; use targeted
+  `grep` plus bounded `read_lines` ranges for larger source files,
+- default prompts should skip `node_modules`, build outputs, sourcemaps, image
+  galleries, and dependency artifacts unless the task explicitly requires them,
 - write/edit/bash return a one-action `approval_id`; after the user approves
   that exact action in chat, call `grant_action_approval` and retry the
   original tool call once with that `approval_id`,
@@ -385,7 +397,7 @@ Connected Agent default auth files:
 Recommended user-facing consultation wrapper:
 
 ```bash
-python3 scripts/level3_consultation_flow.py prepare \
+python3 scripts/connected_agent_flow.py prepare \
   --public-base-url "https://your-stable-host.example.com" \
   --allowed-root "$HOME/work/my-project" \
   --advisor-channel user-web \
@@ -398,18 +410,37 @@ public health checks, generates the compact ChatGPT Web prompt, and copies it to
 the clipboard. It does not assume an advisor channel is ready by default; Codex
 must explicitly pass `user-web`, `browser-automation`, or `direct-tool` with
 `advisor-health=ready` before the Connected Agent window opens. It closes the
-window automatically if public health is not `stable`. Its defaults favor stable
-Tailscale task windows over speed: 30 second public warmup, 30 second preflight
-timeout, six open-time preflight attempts, and five public-health probes. If the
-first health result is `intermittent`, the wrapper runs one extra full health
-check before failing closed. A `failed` result still closes immediately.
+window automatically if public health is not `stable`.
+
+Product defaults favor speed and low ceremony:
+
+```text
+--speed fast --output compact
+```
+
+Fast mode uses a 5 second public warmup, 12 second preflight timeout, two
+open-time preflight attempts, and one public-health probe. This is the default
+for repeated user-facing Connected Agent use where the connector URL and account
+side connector are already known.
+
+Use the old conservative verification profile when proving a tunnel or
+debugging endpoint stability:
+
+```text
+--speed safe --output verbose
+```
+
+Safe mode uses a 30 second public warmup, 30 second preflight timeout, six
+open-time preflight attempts, five public-health probes, and one
+intermittent-health recovery check. A `failed` public health result still closes
+immediately.
 
 Capture the returned ChatGPT Web answer as external advice data before local
 review. This action refreshes the idle timer and leaves the window open by
 default:
 
 ```bash
-python3 scripts/level3_consultation_flow.py capture \
+python3 scripts/connected_agent_flow.py capture \
   --advisor chatgpt-web-connected-agent \
   "<original Connected Agent question>"
 ```
@@ -418,15 +449,14 @@ Use an explicit close only when you are stopping before advice has been captured
 or the user wants to shut the high-risk window immediately:
 
 ```bash
-python3 scripts/level3_consultation_flow.py close
+python3 scripts/connected_agent_flow.py close
 ```
 
-The capture action stores the answer under
-`decision-inbox/level3-consultations/` and renders a review-only gate. It does
-not execute advisor instructions or change project files. By default, the
-watchdog closes the session 20 minutes after the last Connected Agent use. Each new
-Connected Agent action should call `touch` or go through the wrapper so the timer is
-refreshed.
+The capture action stores the answer as Connected Agent review data and renders
+a review-only gate. It does not execute advisor instructions or change project
+files. By default, the watchdog closes the session 20 minutes after the last
+Connected Agent use. Each new Connected Agent action should call `touch` or go
+through the wrapper so the timer is refreshed.
 
 Low-level session window:
 
@@ -485,12 +515,13 @@ The user should not need to paste backend commands during normal product use.
 Codex owns the session lifecycle for the current task window.
 
 When debugging the prompt separately, generate the default product-review
-prompt with:
+prompt with the Connected Agent wrapper:
 
 ```bash
-python3 scripts/level3_consultation_prompt.py \
+python3 scripts/connected_agent_flow.py prepare \
   --allowed-root "$PWD" \
-  --clipboard \
+  --advisor-channel user-web \
+  --advisor-health ready \
   "Review whether this project is ready for Connected Agent use."
 ```
 
@@ -512,9 +543,10 @@ workspace. It does not automatically give Codex an outbound GPT Pro call. If
 Codex cannot see a `direct-tool` advisor channel and browser automation is not
 authorized, the correct state is `waiting_for_advisor_channel`; the product must
 ask the user to trigger ChatGPT Web manually or authorize browser automation.
-For connector calls, ChatGPT Web should use GPT-5.5 Thinking rather than
-GPT-5.5 Pro. OpenAI's current ChatGPT docs state that Pro models do not expose
-Apps/MCP tools.
+For connector calls, ChatGPT Web should use a chat mode where Apps/MCP
+connector tools are visible. If the selected model or chat mode does not expose
+connector tools, switch to a tool-capable chat mode or use Ask First for manual
+GPT Pro review.
 
 Browser automation note: ChatGPT Web is a heavy frontend. Avoid using full DOM
 snapshots as the primary automation path; they have timed out in this lab. Keep

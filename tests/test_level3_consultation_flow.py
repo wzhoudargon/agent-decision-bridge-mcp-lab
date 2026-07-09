@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from scripts import level3_consultation_flow as flow
+from scripts import connected_agent_flow
 
 
 def completed(stdout: str = "", returncode: int = 0) -> subprocess.CompletedProcess[str]:
@@ -18,6 +19,13 @@ def completed(stdout: str = "", returncode: int = 0) -> subprocess.CompletedProc
 
 
 class Level3ConsultationFlowTests(unittest.TestCase):
+    def test_connected_agent_flow_alias_delegates_to_wrapper(self):
+        with mock.patch.object(connected_agent_flow, "level3_main", return_value=0) as main:
+            status = connected_agent_flow.main(["close"])
+
+        self.assertEqual(status, 0)
+        main.assert_called_once_with(["close"])
+
     def test_prepare_opens_checks_health_and_copies_prompt(self):
         stdout = StringIO()
         results = [
@@ -47,14 +55,24 @@ class Level3ConsultationFlowTests(unittest.TestCase):
         self.assertEqual(run.call_count, 3)
         output = stdout.getvalue()
         self.assertIn("Current state: connected_agent_flow_ready_for_advisor", output)
-        self.assertIn("Risk while session remains open: 3/5-5/5", output)
-        self.assertIn("use GPT-5.5 Thinking", output)
-        self.assertIn("Do not use GPT-5.5 Pro", output)
+        self.assertIn("Risk while online: 3/5-5/5", output)
+        self.assertIn("Speed profile: fast", output)
+        self.assertIn("Public health: stable preflight_passed=3/3", output)
+        self.assertIn("ChatGPT Web setup", output)
+        self.assertIn("tool-capable ChatGPT mode", output)
         self.assertIn("Next step for the user:", output)
         self.assertIn("paste the answer back into Codex", output)
         prompt_command = run.call_args_list[2].args[0]
         self.assertIn("--clipboard", prompt_command)
         self.assertIn("Review readiness.", prompt_command)
+        open_command = run.call_args_list[0].args[0]
+        self.assertIn("--public-warmup-seconds", open_command)
+        self.assertIn("5.0", open_command)
+        self.assertIn("--preflight-attempts", open_command)
+        self.assertIn("2", open_command)
+        health_command = run.call_args_list[1].args[0]
+        self.assertIn("--health-attempts", health_command)
+        self.assertIn("1", health_command)
 
     def test_prepare_waits_by_default_until_advisor_channel_is_ready(self):
         stdout = StringIO()
@@ -76,7 +94,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
         run.assert_not_called()
         output = stdout.getvalue()
         self.assertIn("waiting_for_advisor_channel", output)
-        self.assertIn("Risk if opened: 3/5-5/5", output)
+        self.assertIn("Risk while online: 3/5-5/5", output)
         self.assertIn("GPT Pro has not been consulted yet", output)
 
     def test_prepare_waits_when_advisor_channel_not_ready(self):
@@ -132,7 +150,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
         self.assertEqual(status, 0)
         output = stdout.getvalue()
         self.assertIn("Browser automation warning", output)
-        self.assertIn("use GPT-5.5 Thinking", output)
+        self.assertIn("ChatGPT Web setup", output)
         self.assertIn("浏览器自动化会临时控制你的电脑 UI", output)
         self.assertIn("请不要操作鼠标键盘", output)
 
@@ -159,6 +177,8 @@ class Level3ConsultationFlowTests(unittest.TestCase):
                         "user-web",
                         "--advisor-health",
                         "ready",
+                        "--speed",
+                        "safe",
                         "Review readiness.",
                     ]
                 )
@@ -193,6 +213,8 @@ class Level3ConsultationFlowTests(unittest.TestCase):
                         "user-web",
                         "--advisor-health",
                         "ready",
+                        "--speed",
+                        "safe",
                         "Review readiness.",
                     ]
                 )
@@ -310,8 +332,8 @@ class Level3ConsultationFlowTests(unittest.TestCase):
                             "--source-channel",
                             "user-web",
                             "--run-id",
-                            "level3-final-round",
-                            "Review Level 3 maturity.",
+                            "connected-agent-final-round",
+                            "Review Connected Agent readiness.",
                         ]
                     )
 
@@ -320,7 +342,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
         capture_call = run.call_args_list[0]
         capture_command = capture_call.args[0]
         self.assertIn(str(flow.LEVEL3_CAPTURE), capture_command)
-        self.assertIn("Review Level 3 maturity.", capture_command)
+        self.assertIn("Review Connected Agent readiness.", capture_command)
         self.assertEqual(capture_call.kwargs["input_text"], "Adopt: keep user-web.\n")
         output = stdout.getvalue()
         self.assertIn("Current state: connected_agent_flow_review_ready", output)
@@ -348,7 +370,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
                             "--source-channel",
                             "user-web",
                             "--close-after-capture",
-                            "Review Level 3 maturity.",
+                            "Review Connected Agent readiness.",
                         ]
                     )
 
@@ -375,7 +397,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
                             "ChatGPT Web",
                             "--source-channel",
                             "user-web",
-                            "Review Level 3 maturity.",
+                            "Review Connected Agent readiness.",
                         ]
                     )
 

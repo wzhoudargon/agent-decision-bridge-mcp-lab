@@ -132,7 +132,7 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
         names = [tool["name"] for tool in response["result"]["tools"]]
         self.assertEqual(
             names,
-            ["open_workspace", "ls", "read", "write", "edit", "grep", "glob", "bash"],
+            ["open_workspace", "ls", "read", "read_lines", "write", "edit", "grep", "glob", "bash"],
         )
 
     def test_jsonrpc_denies_escape_as_tool_error(self):
@@ -175,6 +175,192 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
             self.root.resolve(),
         )
 
+    def test_read_allows_normal_large_source_files_up_to_one_mb(self):
+        content = "export const item = 'ok';\n" * 13_000
+        large_source = self.root / "src" / "promptTemplates.js"
+        large_source.write_text(content, encoding="utf-8")
+        self.assertGreater(large_source.stat().st_size, 200_000)
+        self.assertLess(large_source.stat().st_size, srv.MAX_READ_FILE_BYTES)
+
+        self.assertEqual(
+            self.manager.read_file(self.workspace, "src/promptTemplates.js"),
+            content,
+        )
+
+    def test_jsonrpc_read_does_not_duplicate_content_in_structured_payload(self):
+        source = self.root / "src" / "promptTemplates.js"
+        content = "export const item = 'ok';\n" * 13_000
+        source.write_text(content, encoding="utf-8")
+
+        response = srv.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 60,
+                "method": "tools/call",
+                "params": {
+                    "name": "read",
+                    "arguments": {
+                        "workspace_id": self.workspace,
+                        "path": "src/promptTemplates.js",
+                    },
+                },
+            },
+            self.manager,
+        )
+
+        self.assertFalse(response["result"]["isError"])
+        self.assertEqual(response["result"]["content"][0]["text"], content)
+        structured = response["result"]["structuredContent"]
+        self.assertEqual(structured["path"], "src/promptTemplates.js")
+        self.assertEqual(structured["bytes"], len(content.encode("utf-8")))
+        self.assertNotIn("content", structured)
+
+    def test_read_still_blocks_oversized_whole_file_but_read_lines_can_sample(self):
+        huge_source = self.root / "src" / "huge.txt"
+        huge_source.write_text(("alpha\n" * 220_000), encoding="utf-8")
+        self.assertGreater(huge_source.stat().st_size, srv.MAX_READ_FILE_BYTES)
+
+        with self.assertRaises(srv.AccessDenied):
+            self.manager.read_file(self.workspace, "src/huge.txt")
+
+        result = self.manager.read_lines(self.workspace, "src/huge.txt", 10, 12)
+        self.assertEqual(result["path"], "src/huge.txt")
+        self.assertEqual([item["line"] for item in result["lines"]], [10, 11, 12])
+        self.assertEqual([item["text"] for item in result["lines"]], ["alpha", "alpha", "alpha"])
+        self.assertFalse(result["truncated"])
+
+    def test_jsonrpc_read_lines_caps_large_ranges(self):
+        source = self.root / "src" / "many-lines.txt"
+        source.write_text("".join(f"line {index}\n" for index in range(1, 800)), encoding="utf-8")
+
+        response = srv.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 59,
+                "method": "tools/call",
+                "params": {
+                    "name": "read_lines",
+                    "arguments": {
+                        "workspace_id": self.workspace,
+                        "path": "src/many-lines.txt",
+                        "start_line": 1,
+                        "end_line": 700,
+                    },
+                },
+            },
+            self.manager,
+        )
+
+        self.assertFalse(response["result"]["isError"])
+        structured = response["result"]["structuredContent"]
+        self.assertEqual(len(structured["lines"]), srv.MAX_READ_LINES)
+        self.assertTrue(structured["truncated"])
+        self.assertEqual(structured["lines"][0], {"line": 1, "text": "line 1"})
+
+    def test_connected_agent_can_open_single_default_workspace_without_path(self):
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root], profile=srv.PROFILE_CONNECTED_AGENT
+        )
+
+        response = srv.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 55,
+                "method": "tools/call",
+                "params": {
+                    "name": "open_default_workspace",
+                    "arguments": {},
+                },
+            },
+            manager,
+        )
+
+        self.assertFalse(response["result"]["isError"])
+        self.assertEqual(
+            Path(response["result"]["structuredContent"]["root"]),
+            self.root.resolve(),
+        )
+        workspace_id = response["result"]["structuredContent"]["workspace_id"]
+        self.assertEqual(manager.read_file(workspace_id, "README.md"), "hello full agent\n")
+
+    def test_connected_agent_open_workspace_accepts_default_alias_for_stale_schema(self):
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root], profile=srv.PROFILE_CONNECTED_AGENT
+        )
+
+        response = srv.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 57,
+                "method": "tools/call",
+                "params": {
+                    "name": "open_workspace",
+                    "arguments": {"path": "default"},
+                },
+            },
+            manager,
+        )
+
+        self.assertFalse(response["result"]["isError"])
+        self.assertEqual(
+            Path(response["result"]["structuredContent"]["root"]),
+            self.root.resolve(),
+        )
+        workspace_id = response["result"]["structuredContent"]["workspace_id"]
+        self.assertEqual(manager.read_file(workspace_id, "README.md"), "hello full agent\n")
+
+    def test_connected_agent_default_alias_rejects_ambiguous_roots(self):
+        second_root = Path(self.tempdir.name) / "second-project"
+        second_root.mkdir()
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root, second_root], profile=srv.PROFILE_CONNECTED_AGENT
+        )
+
+        response = srv.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 58,
+                "method": "tools/call",
+                "params": {
+                    "name": "open_workspace",
+                    "arguments": {"path": "default"},
+                },
+            },
+            manager,
+        )
+
+        self.assertTrue(response["result"]["isError"])
+        self.assertIn(
+            "default workspace alias requires exactly one configured allowed root",
+            response["result"]["content"][0]["text"],
+        )
+
+    def test_connected_agent_rejects_default_workspace_when_ambiguous(self):
+        second_root = Path(self.tempdir.name) / "second-project"
+        second_root.mkdir()
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root, second_root], profile=srv.PROFILE_CONNECTED_AGENT
+        )
+
+        response = srv.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 56,
+                "method": "tools/call",
+                "params": {
+                    "name": "open_default_workspace",
+                    "arguments": {},
+                },
+            },
+            manager,
+        )
+
+        self.assertTrue(response["result"]["isError"])
+        self.assertIn(
+            "requires exactly one configured allowed root",
+            response["result"]["content"][0]["text"],
+        )
+
     def test_jsonrpc_bad_tool_params_returns_tool_error_not_internal_error(self):
         response = srv.handle_request(
             {
@@ -202,7 +388,7 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
         )
         self.assertEqual(
             [tool["name"] for tool in response["result"]["tools"]],
-            ["open_workspace", "ls", "read", "grep", "glob"],
+            ["open_workspace", "ls", "read", "read_lines", "grep", "glob"],
         )
 
         entries = manager.list_directory(workspace)
@@ -244,9 +430,11 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
         self.assertEqual(
             [tool["name"] for tool in response["result"]["tools"]],
             [
+                "open_default_workspace",
                 "open_workspace",
                 "ls",
                 "read",
+                "read_lines",
                 "write",
                 "edit",
                 "grep",

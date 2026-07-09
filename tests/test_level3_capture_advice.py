@@ -14,10 +14,10 @@ from scripts import level3_capture_advice as capture
 class Level3CaptureAdviceTests(unittest.TestCase):
     def make_args(self, tempdir: str, **overrides):
         defaults = {
-            "question": "Should Level 3 be considered mature?",
+            "question": "Should Connected Agent be considered ready?",
             "advisor": "ChatGPT Web",
             "source_channel": "user-web",
-            "run_id": "level3-product-review",
+            "run_id": "connected-agent-product-review",
             "timestamp": "2026-06-24T08-10-00Z",
             "advice_file": None,
             "consultations_root": Path(tempdir) / "level3-consultations",
@@ -37,7 +37,7 @@ class Level3CaptureAdviceTests(unittest.TestCase):
             captured = capture.capture_advice(args)
             rendered = capture.render_review(captured)
 
-            self.assertEqual(captured["run_id"], "level3-product-review")
+            self.assertEqual(captured["run_id"], "connected-agent-product-review")
             self.assertEqual(captured["advisor_rounds"], "1")
             self.assertTrue(captured["advice_path"].is_file())
         self.assertIn("Current state: review_only", rendered)

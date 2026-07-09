@@ -148,12 +148,19 @@ python3 server/decision_inbox_http_server.py \
   --oauth-owner-token-file /tmp/decision-inbox-oauth-owner-token
 ```
 
-Expected tools: `open_workspace`, `ls`, `read`, `write`, `edit`, `grep`,
-`glob`, `bash`, `enable_danger_auto`, `danger_auto_status`,
-`disable_danger_auto`, `request_workspace_access`, and
-`grant_workspace_access`. This mode does not generate or serve a decision
-package. Write/edit/bash require approval by default. Danger Auto starts only
-after `dangerously trust connected agent`.
+Expected tools: `open_default_workspace`, `open_workspace`, `ls`, `read`,
+`read_lines`, `write`, `edit`, `grep`, `glob`, `bash`, `enable_danger_auto`,
+`danger_auto_status`, `disable_danger_auto`, `request_workspace_access`, and
+`grant_workspace_access`. Prefer `open_default_workspace` when exactly one
+allowed root is configured so the web advisor does not need to pass a local
+absolute path. If ChatGPT Web still exposes a stale schema without
+`open_default_workspace`, call `open_workspace` with path exactly `"default"`
+as the no-local-path compatibility alias. This mode does not generate or serve
+a decision package. Whole-file `read` accepts normal task-relevant UTF-8 files
+up to 1 MB; larger source files should use targeted `grep` and bounded
+`read_lines` ranges.
+Write/edit/bash require approval by default. Danger Auto starts only after
+`dangerously trust connected agent`.
 
 For tunnel/reverse-proxy runs, provide the public origin without `/mcp`:
 

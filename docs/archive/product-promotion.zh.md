@@ -1,3 +1,9 @@
+# Historical Launch Draft
+
+This Chinese promotion draft is retained for reference only. It may contain
+superseded model names, version labels, and mode names from earlier iterations.
+Use `docs/user-guide.md` as the current English product description.
+
 # codex外接最强助理 V1.1.0 推广文案
 
 ## 一句话

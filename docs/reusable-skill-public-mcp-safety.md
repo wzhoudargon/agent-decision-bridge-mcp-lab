@@ -108,7 +108,7 @@ auto-close after 20 minutes idle
 risk coefficient while active: 3/5-5/5
 hidden danger switch risk coefficient: 5/5
 OAuth scope: connected-agent
-tools: open_workspace, ls, read, write, edit, grep, glob, bash,
+tools: open_default_workspace, open_workspace, ls, read, read_lines, write, edit, grep, glob, bash,
        enable_danger_auto, danger_auto_status, disable_danger_auto,
        grant_action_approval, request_workspace_access, grant_workspace_access
 ```

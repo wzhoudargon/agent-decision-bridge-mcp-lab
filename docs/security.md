@@ -64,15 +64,15 @@ Not allowed in external advisor exposure unless explicitly authorized:
 - proprietary full project dumps,
 - unrestricted home directory access.
 
-## Product Permission Ladder
+## Product Permission Model
 
-Level 1: Ask First
+Ask First
 
 - Current baseline.
 - Safest but repetitive.
-- Codex creates a package only when the user chooses this tier.
+- Codex creates a package only when the user chooses this mode.
 
-Level 2: Connected Agent
+Connected Agent
 
 - Web advisor connects to configured project roots directly.
 - No package generation.
@@ -128,7 +128,7 @@ Decision Inbox may borrow these DevSpace-style connector practices:
 
 Legacy Auto MCP must not borrow DevSpace's broad workspace capability surface.
 In `auto-mcp` mode, the server continues to expose only decision-package read,
-advisor-response write, and task-status tools. Product Level 2 is now
+advisor-response write, and task-status tools. Current project-aware review is
 `connected-agent`, not package-only Auto MCP.
 
 Connector separation rules:
@@ -168,8 +168,8 @@ Connected Agent session-window rule:
 - prefer `scripts/full_agent_session.py` for product use,
 - verify that a real advisor channel is available before opening the public
   Connected Agent window,
-- require GPT-5.5 Thinking for ChatGPT Web MCP/App connector calls; do not use
-  GPT-5.5 Pro for this step because Pro models do not expose Apps/MCP tools,
+- require a ChatGPT Web mode where Apps/MCP connector tools are visible for
+  Connected Agent calls,
 - keep the public Connected Agent connector online only during the active Codex task,
 - call `touch` after each consult step,
 - close automatically 20 minutes after the last Connected Agent use,
@@ -181,9 +181,9 @@ Advisor-channel truthfulness rule:
 
 - Connected Agent exposes local tools to ChatGPT Web; it does not itself let Codex
   call GPT Pro.
-- In current ChatGPT product docs, Pro models do not support Apps/MCP tools.
-  Connector workflows should use GPT-5.5 Thinking even when the user's shorthand
-  says "ask GPT Pro".
+- If the selected model or chat mode does not expose Apps/MCP tools, Connector
+  workflows should stop at `waiting_for_advisor_channel` or fall back to Ask
+  First even when the user's shorthand says "ask GPT Pro".
 - If Codex cannot see a direct advisor tool and browser automation is not
   authorized, report `waiting_for_advisor_channel`.
 - Do not imply that GPT Pro reviewed a package unless advice was actually

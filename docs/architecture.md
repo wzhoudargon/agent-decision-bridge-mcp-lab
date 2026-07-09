@@ -33,17 +33,17 @@ Codex
 ```
 
 This remains useful for compatibility and controlled tests, but it is no longer
-the product Level 2.
+the current project-aware product mode.
 
 ## Product Mode Flow
 
 ```text
-Level 1 Ask First
+Ask First
   Codex -> creates package
   User -> manually sends package to GPT Pro
   User -> brings advice back
 
-Level 2 Connected Agent
+Connected Agent
   ChatGPT Web -> MCP connector
   MCP server -> opens allowed project root
   ChatGPT Web -> lists/reads/searches project files by default
@@ -160,7 +160,7 @@ For repeated ChatGPT Web testing, prefer a stable public URL. Temporary tunnel
 URLs are acceptable for one-off tests, but changing the URL usually requires an
 explicit ChatGPT connector reconnect or recreation.
 
-Connected Agent is the V1.1 account-side connector. Legacy package-only Auto
+Connected Agent is the current account-side connector. Legacy package-only Auto
 MCP remains separate. Legacy Read-Only Project Advisor and Full-Agent scopes
 are deprecated aliases for existing connectors and tests:
 
@@ -183,13 +183,20 @@ necessary project context directly without a decision package:
 - `--mode connected-agent` is required,
 - at least one `--allowed-root` is required,
 - home and filesystem roots are rejected,
-- tools include `open_workspace`, `ls`, `read`, `write`, `edit`, `grep`,
-  `glob`, `bash`, `enable_danger_auto`, `danger_auto_status`,
+- tools include `open_default_workspace`, `open_workspace`, `ls`, `read`,
+  `read_lines`, `write`, `edit`, `grep`, `glob`, `bash`, `enable_danger_auto`, `danger_auto_status`,
   `disable_danger_auto`, `grant_action_approval`, `request_workspace_access`, and
   `grant_workspace_access`,
+- when exactly one allowed root is configured, `open_default_workspace` avoids
+  passing a local absolute path through ChatGPT Web,
+- stale ChatGPT connector schemas can call `open_workspace` with path exactly
+  `"default"` as the no-local-path compatibility alias for the single allowed
+  root,
 - high-risk credential paths such as `.env*`, `.git`, SSH and cloud credential
   directories, private-key material, and known token/OAuth state files are
   blocked,
+- whole-file reads are capped at normal source-file scale, currently 1 MB, with
+  `read_lines` for larger task-relevant text files,
 - other task-relevant project files may be chosen by the web advisor,
 - writes, edits, and bash use one-action approval by default: return
   `approval_id`, confirm with the user in chat, call `grant_action_approval`,
@@ -275,9 +282,10 @@ It does not automatically give Codex an outbound GPT Pro model call:
 Codex -/-> GPT Pro Web model
 ```
 
-For ChatGPT Web connector calls, the user or automation should select
-GPT-5.5 Thinking. GPT-5.5 Pro should not be used for MCP/App connector work
-because current OpenAI ChatGPT docs say Pro models do not expose those tools.
+For ChatGPT Web connector calls, the user or automation should select a
+ChatGPT Web mode where Apps/MCP connector tools are visible. If connector tools
+are not visible, use Ask First for manual GPT Pro review or switch to a
+tool-capable ChatGPT mode.
 
 Conversation product mode must therefore check the current advisor channel:
 

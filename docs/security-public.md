@@ -12,16 +12,16 @@ secrets, owner-token paths, OAuth state contents, and local credential details.
   for file edits, shell commands, dependency installs, Git operations,
   publishing, deletion, or use of secrets.
 
-## Product Tiers
+## Product Modes
 
-Level 1: Ask First
+Ask First
 
 - No public MCP exposure.
 - Codex creates a package and the user sends it manually.
 - Risk: `1/5`.
 - Does not require Tailscale, Cloudflare, ngrok, or any public tunnel.
 
-Level 2: Connected Agent
+Connected Agent
 
 - ChatGPT Web may list, read, and search an allowed project root by default.
 - Requires a user-provided public HTTPS endpoint when ChatGPT Web should call
@@ -42,9 +42,9 @@ Level 2: Connected Agent
   destructive operations are denied or require explicit approval.
 - Other task-relevant project files may be inspected.
 - Risk: `3/5-5/5`; the hidden switch is fixed `5/5`.
-- Connector calls should be run with GPT-5.5 Thinking selected. GPT-5.5 Pro
-  should not be used for MCP/App connector work because Pro models do not expose
-  these tools.
+- Connector calls should be run in a ChatGPT Web mode where Apps/MCP connector
+  tools are visible. If the selected model or chat mode does not expose these
+  tools, use Ask First for manual GPT Pro review instead.
 - It is not a sandbox; command execution has the local user's permissions.
 - It must run only inside a short task window and close after idle timeout.
 
@@ -89,7 +89,8 @@ Use Connected Agent to consult ChatGPT Web about this project.
 Codex should then:
 
 1. check that a real ChatGPT Web advisor channel is available,
-2. tell the user/browser automation to use GPT-5.5 Thinking for connector access,
+2. tell the user/browser automation to use a ChatGPT Web mode with connector
+   tools visible,
 3. open the Connected Agent window only for the active task,
 4. ask ChatGPT Web through the visible connector,
 5. import the answer,

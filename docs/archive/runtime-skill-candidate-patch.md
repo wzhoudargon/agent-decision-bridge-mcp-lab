@@ -70,6 +70,81 @@ unless the user explicitly requests immediate close.
 This candidate patch is intentionally small. It should not turn the runtime
 skill into a long tunnel manual.
 
+## 2026-07-02 Candidate: Fast Connected Agent Startup
+
+Status: suggested only, not applied to the runtime skill.
+
+Triggering feedback:
+
+```text
+The user needs the second-tier Connected Agent startup time and experience to
+feel smooth enough to use as a product. The current startup is too cumbersome.
+```
+
+Target file:
+
+```text
+~/.codex/skills/agent-decision-bridge/SKILL.md
+```
+
+Expected benefit:
+
+- Future Codex sessions should default to a compact Connected Agent status card
+  and one next action instead of narrating the full safety model on every start.
+- When this lab repository is available, Codex should prefer
+  `scripts/connected_agent_flow.py prepare`, which defaults to
+  `--speed fast --output compact`.
+- The older conservative connector-verification behavior remains available as
+  `--speed safe --output verbose`.
+- The safety boundaries remain unchanged: no false claim that GPT Pro was
+  consulted, no opening without an advisor channel, no treating external advice
+  as authorization, and no bypass of Connected Agent approval gates.
+
+Risk:
+
+- If the runtime wording is too terse, future sessions may under-report risk
+  when public MCP exposure is opened.
+- If the runtime wording over-optimizes for fast mode, Codex may skip the safe
+  profile when the connector endpoint is unstable or being verified for the
+  first time.
+
+Rollback path:
+
+```text
+~/.codex/skill-backups/agent-decision-bridge/2026-06-18-pre-automation/
+```
+
+Candidate rule block:
+
+```markdown
+For routine Connected Agent starts, default to a product status card and one
+next action. Do not re-explain the whole bridge safety model unless the user is
+changing product tier, opening a public endpoint for the first time, enabling
+browser automation, requesting write/edit/bash, or asking about risk.
+
+If the current workspace contains `scripts/connected_agent_flow.py`, use it as
+the preferred product entry point:
+
+`python3 scripts/connected_agent_flow.py prepare ...`
+
+Use the default `--speed fast --output compact` for repeated user-facing
+consultations. Use `--speed safe --output verbose` for connector verification,
+tunnel debugging, first-time setup, or unstable public health.
+
+The compact status card should include only:
+
+- `Connected Agent: starting / ready_for_advisor / waiting_for_advisor_channel / closed`
+- `Advisor channel: user-web / browser-automation / direct-tool / unknown`
+- `Workspace: <allowed root>`
+- `Risk while online: 3/5-5/5; Danger Auto 5/5`
+- `Current step: prepare / web-consult / capture / idle-wait / close`
+- `Next action: <who does what next>`
+
+Keep the existing truthfulness and review gates: do not claim GPT Pro or
+ChatGPT Web was consulted until real advice returns, and always capture/import
+external advice before local Adopt / Ask / Reject classification.
+```
+
 ## Expected Benefit
 
 - Makes the current Level 3 product flow explicit in the reusable skill.

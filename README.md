@@ -1,8 +1,16 @@
-# Agent Decision Bridge MCP Lab
+# Agent Decision Bridge
 
-Agent Decision Bridge turns ChatGPT Web into a permission-tiered external
-agent for Codex. Use stronger web models for deep reasoning, review, and
-second opinions while Codex keeps local verification and execution control.
+Agent Decision Bridge lets Codex use ChatGPT Web as an external advisor or a
+connected project reviewer while Codex keeps local verification and execution
+control.
+
+Start here:
+
+- [User Guide](docs/user-guide.md): the concentrated product and usage guide.
+- [Connector Runbook](docs/connector-runbook.md): public endpoint, OAuth, and
+  connector setup details.
+- [Security Summary](docs/security-public.md): the short safety model for web
+  advisor reads.
 
 The short version:
 
@@ -11,10 +19,11 @@ The short version:
   approval gates.
 - Pick Ask First or Connected Agent instead of giving a web model unchecked
   access to your machine.
-- Make Codex usage more durable by moving architecture review, strategy,
-  tradeoff analysis, and second-opinion work into ChatGPT Web.
+- Move architecture review, strategy, tradeoff analysis, and second-opinion
+  work into ChatGPT Web before Codex spends local execution effort.
 
-This project turns the current `agent-decision-bridge` manual workflow into a staged MCP automation experiment.
+This project is the implementation lab and public documentation for the
+`agent-decision-bridge` workflow.
 
 ## Product Positioning
 
@@ -27,22 +36,18 @@ The product framing is:
 ```text
 Codex = local fact checker and executor
 ChatGPT Web = external agent / advisor
-GPT-5.5 Pro = manual deep-reasoning consultant in Ask First
-GPT-5.5 Thinking = MCP/App connector model for project-aware tool calls
+GPT Pro or another strong web model = manual deep-reasoning consultant in Ask First
+ChatGPT Web with Apps/MCP connector tools = project-aware Connected Agent reviewer
 ```
 
-This matters because ChatGPT Pro plans advertise higher usage capacity,
-GPT-5.5 Pro reasoning, maximum Codex tasks, maximum deep research and agent
-mode, and maximum memory/context. This project uses that web-side capacity as a
-separate reasoning lane for Codex work. It does not literally multiply Codex
-quota, but it can make Codex usage more durable by offloading review,
-architecture judgment, risk analysis, and product decisions to ChatGPT Web
-before Codex spends local execution effort.
+This does not literally multiply Codex quota. It makes Codex usage more durable
+by offloading review, architecture judgment, risk analysis, and product
+decisions to ChatGPT Web before Codex spends local execution effort.
 
-V1.1 supports two product tiers:
+The current product has two modes:
 
 1. **Ask First**: Codex prepares a focused package; the user manually asks a web
-   advisor such as GPT-5.5 Pro, Claude, or Gemini. No MCP exposure. Risk `1/5`.
+   advisor such as GPT Pro, Claude, or Gemini. No MCP exposure. Risk `1/5`.
 2. **Connected Agent**: ChatGPT Web connects to allowed project roots through
    MCP. Default mode auto-allows read/search/list. Write, edit, and bash return
    a one-action `approval_id`; after the user approves that exact action in
@@ -56,13 +61,13 @@ Legacy `auto-mcp`, `read-only-project`, and `full-agent` entry points remain as
 deprecated aliases for old tests and existing ChatGPT connectors. New users
 should choose **Ask First** or **Connected Agent**.
 
-For MCP/App connector use, select **GPT-5.5 Thinking** in ChatGPT Web. GPT-5.5
-Pro can be used for the manual Ask First tier, but current ChatGPT Pro models
-do not expose Apps/MCP connector tools.
+For Connected Agent, use a ChatGPT Web conversation that exposes Apps/MCP
+connector tools. GPT Pro can still be used for the manual Ask First path when
+you want deep reasoning without opening a connector.
 
-The important boundary: GPT-5.5 Pro is strongest for the manual deep-consulting
-path, while MCP/App connector work should use GPT-5.5 Thinking because Pro
-models do not expose connector tools in the current ChatGPT product.
+The important boundary: a strong Pro-style web model is useful for manual
+deep-consulting, while Connected Agent requires a ChatGPT Web mode where the
+connector tools are actually visible.
 
 ## Public HTTPS URL Policy
 
@@ -108,7 +113,11 @@ would centralize security, privacy, uptime, and abuse risk in one account.
 - Not a reason to expose secrets, unrestricted home directories, or real
   production credentials to a web model.
 
-For launch copy, see [`docs/product-promotion.zh.md`](docs/product-promotion.zh.md).
+For current public wording, use [`docs/user-guide.md`](docs/user-guide.md).
+The older Chinese launch draft in
+[`docs/archive/product-promotion.zh.md`](docs/archive/product-promotion.zh.md)
+is retained as historical material and may contain superseded model or mode
+names.
 
 The default goal is not to let ChatGPT Web or another external model freely edit
 local projects. The default goal is to reduce repetitive copy-paste while
@@ -125,8 +134,8 @@ preserving the safety model we already defined:
 
 ## Current Status
 
-Phase: Decision Inbox MCP v1 verified; V1.1 Connected Agent with hidden danger switch
-implemented locally.
+Phase: Decision Inbox MCP verified; Connected Agent with the hidden danger
+switch implemented locally.
 
 Verified on 2026-06-21:
 
@@ -154,20 +163,18 @@ Implemented after verification:
 This folder is the durable project context for future Codex threads. New threads should start by reading:
 
 1. `README.md`
-2. `PROJECT_CONTEXT.md`
-3. `docs/plan.md`
-4. `docs/security.md`
-5. `docs/security-public.md`
-6. `docs/architecture.md`
-7. `docs/decision-inbox-protocol.md`
-8. `docs/connector-runbook.md`
-9. `docs/reusable-skill-public-mcp-safety.md`
-10. `docs/conversation-product-mode.md`
-11. `docs/level-3-user-flow.md`
-12. `docs/phase-2-decision-inbox-local-verification.md`
-13. `docs/phase-5-full-agent-live-verification.md`
-14. `docs/level-3-completion-audit.md`
-15. `docs/product-promotion.zh.md`
+2. `docs/user-guide.md`
+3. `PROJECT_CONTEXT.md`
+4. `docs/plan.md`
+5. `docs/security.md`
+6. `docs/security-public.md`
+7. `docs/architecture.md`
+8. `docs/decision-inbox-protocol.md`
+9. `docs/connector-runbook.md`
+10. `docs/reusable-skill-public-mcp-safety.md`
+11. `docs/conversation-product-mode.md`
+12. `docs/connected-agent-user-flow.md`
+13. `docs/phase-2-decision-inbox-local-verification.md`
 
 ## Directory Layout
 
@@ -191,21 +198,21 @@ This folder is the durable project context for future Codex threads. New threads
 │           ├── advice/
 │           └── fact-check-requests/
 ├── docs/
+│   ├── archive/
 │   ├── architecture.md
+│   ├── connected-agent-user-flow.md
 │   ├── connector-runbook.md
 │   ├── decision-inbox-protocol.md
-│   ├── level-3-completion-audit.md
-│   ├── level-3-user-flow.md
 │   ├── phase-1-local-verification.md
 │   ├── phase-1-restricted-access-test.md
 │   ├── phase-2-decision-inbox-local-verification.md
 │   ├── phase-2-external-connector-verification.md
 │   ├── plan.md
-│   ├── product-promotion.zh.md
 │   ├── reusable-skill-public-mcp-safety.md
 │   ├── security.md
 │   ├── security-public.md
-│   └── tailscale-funnel-verification.md
+│   ├── tailscale-funnel-verification.md
+│   └── user-guide.md
 ├── server/
 │   ├── decision_inbox_http_server.py
 │   ├── decision_inbox_server.py
@@ -254,27 +261,37 @@ Target v1 workflow:
 3. ChatGPT Web submits advice back into `decision-inbox/`.
 4. Codex imports the advice, checks local facts, and decides whether the loop should stop.
 
-## Product Tiers
+## Product Modes
 
-Level 1: Ask First
+Ask First
 
 - package/advice files only,
 - no MCP exposure,
 - risk `1/5`.
 
-Level 2: Connected Agent
+Connected Agent
 
 - requires `--mode connected-agent` and `--allowed-root`,
 - does not generate a decision package,
-- exposes `open_workspace`, `ls`, `read`, `write`, `edit`, `grep`, `glob`,
-  `bash`, `enable_danger_auto`, `danger_auto_status`,
-  `disable_danger_auto`, `request_workspace_access`, and
+- exposes `open_default_workspace`, `open_workspace`, `ls`, `read`,
+  `read_lines`, `write`, `edit`, `grep`, `glob`, `bash`,
+  `enable_danger_auto`, `danger_auto_status`, `disable_danger_auto`,
+  `request_workspace_access`, and
   `grant_workspace_access`,
+- prefers `open_default_workspace` when one allowed root is configured, so
+  ChatGPT Web does not need to pass a local absolute path,
+- supports `open_workspace` path `"default"` as the same no-local-path fallback
+  when ChatGPT Web still exposes a stale connector schema without
+  `open_default_workspace`,
 - hard-blocks high-risk credential paths such as `.env*`, `.git`, SSH and
   cloud credential directories, private-key material, and known token/OAuth
   state files,
 - otherwise lets the web advisor choose task-relevant files under the allowed
   root,
+- reads normal task-relevant UTF-8 source files up to 1 MB; larger source files
+  should be inspected with targeted `grep` plus bounded `read_lines` ranges,
+- default prompts should skip `node_modules`, build outputs, sourcemaps, image
+  galleries, and dependency artifacts unless the task explicitly requires them,
 - read/search/list are automatic by default,
 - write/edit/bash return a one-action `approval_id` by default; after the user
   approves the exact action in chat, ChatGPT calls `grant_action_approval` and
@@ -298,10 +315,10 @@ Use Ask First for the safest GPT Pro / Claude / Gemini flow. Use Connected
 Agent when the user wants ChatGPT Web to inspect project content and, when
 approved, write/edit/run safe local commands.
 
-For Connected Agent connector calls, select
-GPT-5.5 Thinking in ChatGPT Web. Do not select GPT-5.5 Pro for MCP/App
-connector work: OpenAI's current ChatGPT docs say Pro models do not expose
-Apps/MCP tools, while GPT-5.5 Thinking supports ChatGPT tools.
+For Connected Agent connector calls, use a ChatGPT Web conversation where
+Apps/MCP connector tools are visible. If the chosen model or chat mode does not
+show connector tools, switch to a tool-capable ChatGPT mode or use Ask First
+with GPT Pro instead.
 
 Connected Agent uses one ChatGPT connector/scope:
 
@@ -333,15 +350,15 @@ without borrowing its broad workspace permissions:
 - for Connected Agent, prefer `scripts/full_agent_session.py open/touch/status/close`;
   the default idle timeout is 1200 seconds.
 - for user-facing Connected Agent consultations, prefer
-  `scripts/level3_consultation_flow.py prepare/capture/close`; it wraps the
+  `scripts/connected_agent_flow.py prepare/capture/close`; it wraps the
   advisor gate, Connected Agent open, public health check, prompt generation, advice
   capture, and idle-window lifecycle into one bounded workflow.
 - after a Connected Agent answer returns, use
-  `scripts/level3_consultation_flow.py capture`; it saves the advice as data,
+  `scripts/connected_agent_flow.py capture`; it saves the advice as data,
   renders the review-only gate, refreshes the idle timer, and leaves the session
   open until 20 minutes after the last Connected Agent use by default.
-- for non-technical Connected Agent usage, see `docs/level-3-user-flow.md`
-  (legacy filename).
+- for non-technical Connected Agent usage, see
+  `docs/connected-agent-user-flow.md`.
 
 Do not start Connected Agent unless the user explicitly requests project-aware
 web connector use and chooses at least one allowed project root.
@@ -353,14 +370,15 @@ external advisor, imports the result, classifies recommendations as `Adopt`,
 `Ask`, or `Reject`, and lets the idle watchdog close the window 20 minutes after
 the last use.
 When this repository is available, Codex should use
-`scripts/level3_consultation_flow.py prepare` to open the short task window and
-copy the compact ChatGPT Web prompt, then use `scripts/level3_consultation_flow.py
+`scripts/connected_agent_flow.py prepare` to open the short task window and
+copy the compact ChatGPT Web prompt, then use `scripts/connected_agent_flow.py
 capture` after advice is captured. The capture step keeps the window open and
 refreshes the idle timer by default; use `close` only for an explicit manual
 shutdown. The wrapper no longer assumes browser automation is available by
 default; Codex must explicitly mark an advisor channel such as `user-web`,
 `browser-automation`, or `direct-tool` as `ready` before the Connected Agent
-window opens.
+window opens. The product default is `--speed fast --output compact`; use
+`--speed safe --output verbose` only for connector verification or debugging.
 
 Important limitation: Connected Agent is an inbound ChatGPT Web connector, not a
 GPT Pro API that Codex can automatically call by itself. The conversation
@@ -368,18 +386,13 @@ product flow in `docs/conversation-product-mode.md` requires Codex to detect
 whether an advisor channel is available. If not, Codex must report
 `waiting_for_advisor_channel` instead of pretending that GPT Pro was consulted.
 
-The older full-agent live verification is recorded in
-`docs/phase-5-full-agent-live-verification.md`: the predecessor workspace connector
-connector tools were verified against this workspace, and multiple compact
-ChatGPT Web consultations succeeded. Earlier verification used a fixed
-three-file safe set. The current product prompt now defaults to self-directed
+Older full-agent and tiered-mode verification notes live under `docs/archive/`.
+They are retained as evidence only and are not the current product
+description. The current product prompt now defaults to self-directed
 task-relevant inspection under the allowed root, backed by server-side
 high-risk credential path blocking and a required read/list/search report from
 the advisor. Browser automation is usable but not yet frictionless: the
 connector path works, while UI prompt entry can still need fallback handling.
-The current maturity audit is recorded in
-`docs/level-3-completion-audit.md`: the previous workspace connector path is classified as
-`usable_short_window_user_web`, not yet a fully autonomous mature product.
 Tailscale Funnel is currently classified as conditionally usable for short
 Connected Agent task windows: a 2026-06-24 retest passed `status
 --check-public-health` 5/5 and ChatGPT Web successfully read the three default

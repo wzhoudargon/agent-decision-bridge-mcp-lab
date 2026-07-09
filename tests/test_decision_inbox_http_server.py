@@ -448,6 +448,7 @@ class DecisionInboxHttpServerTests(unittest.TestCase):
                     "open_workspace",
                     "ls",
                     "read",
+                    "read_lines",
                     "write",
                     "edit",
                     "grep",
@@ -534,9 +535,11 @@ class DecisionInboxHttpServerTests(unittest.TestCase):
             self.assertEqual(
                 [tool["name"] for tool in tools["result"]["tools"]],
                 [
+                    "open_default_workspace",
                     "open_workspace",
                     "ls",
                     "read",
+                    "read_lines",
                     "write",
                     "edit",
                     "grep",
@@ -557,8 +560,8 @@ class DecisionInboxHttpServerTests(unittest.TestCase):
                     "id": 41,
                     "method": "tools/call",
                     "params": {
-                        "name": "open_workspace",
-                        "arguments": {"path": str(project_root)},
+                        "name": "open_default_workspace",
+                        "arguments": {},
                     },
                 },
                 headers={"Authorization": "Bearer connected-token"},
@@ -704,7 +707,7 @@ class DecisionInboxHttpServerTests(unittest.TestCase):
             )
             self.assertEqual(
                 [tool["name"] for tool in tools["result"]["tools"]],
-                ["open_workspace", "ls", "read", "grep", "glob"],
+                ["open_workspace", "ls", "read", "read_lines", "grep", "glob"],
             )
             opened = self._post_json(
                 base,

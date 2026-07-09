@@ -19,7 +19,8 @@ SERVER_NAME = "agent-decision-bridge-full-agent"
 SERVER_VERSION = "0.1.0"
 MAX_COMMAND_SECONDS = 30
 MAX_COMMAND_OUTPUT_BYTES = 200_000
-MAX_READ_FILE_BYTES = 200_000
+MAX_READ_FILE_BYTES = 1_000_000
+MAX_READ_LINES = 500
 PROFILE_FULL_AGENT = "full-agent"
 PROFILE_READ_ONLY_PROJECT = "read-only-project"
 PROFILE_CONNECTED_AGENT = "connected-agent"
@@ -198,12 +199,14 @@ class FullAgentWorkspaceManager:
     @property
     def tool_names(self) -> List[str]:
         if self.profile == PROFILE_READ_ONLY_PROJECT:
-            return ["open_workspace", "ls", "read", "grep", "glob"]
+            return ["open_workspace", "ls", "read", "read_lines", "grep", "glob"]
         if self.profile == PROFILE_CONNECTED_AGENT:
             return [
+                "open_default_workspace",
                 "open_workspace",
                 "ls",
                 "read",
+                "read_lines",
                 "write",
                 "edit",
                 "grep",
@@ -216,11 +219,24 @@ class FullAgentWorkspaceManager:
                 "request_workspace_access",
                 "grant_workspace_access",
             ]
-        return ["open_workspace", "ls", "read", "write", "edit", "grep", "glob", "bash"]
+        return ["open_workspace", "ls", "read", "read_lines", "write", "edit", "grep", "glob", "bash"]
+
+    def open_default_workspace(self) -> Dict[str, Any]:
+        self.touch()
+        if len(self.allowed_roots) != 1:
+            raise AccessDenied(
+                "open_default_workspace requires exactly one configured allowed root; "
+                "ask Codex or the user to disambiguate the authorized workspace "
+                "instead of guessing or passing a local absolute path"
+            )
+        return self._open_resolved_workspace(self.allowed_roots[0])
 
     def open_workspace(self, path_value: str) -> Dict[str, Any]:
         self.touch()
         requested = self._resolve_requested_workspace(path_value)
+        return self._open_resolved_workspace(requested)
+
+    def _open_resolved_workspace(self, requested: Path) -> Dict[str, Any]:
         workspace_id = f"ws-{uuid.uuid4().hex}"
         self.workspaces[workspace_id] = requested
         if self.profile == PROFILE_READ_ONLY_PROJECT:
@@ -279,6 +295,43 @@ class FullAgentWorkspaceManager:
         if target.stat().st_size > MAX_READ_FILE_BYTES:
             raise AccessDenied("read target is too large for advisor exposure")
         return target.read_text(encoding="utf-8")
+
+    def read_lines(
+        self,
+        workspace_id: str,
+        path_value: str,
+        start_line: int,
+        end_line: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        self.touch()
+        target = self.resolve_workspace_path(workspace_id, path_value, must_exist=True)
+        if not target.is_file():
+            raise AccessDenied("read_lines target must be a file")
+        self._assert_read_allowed(target)
+        if not isinstance(start_line, int) or start_line < 1:
+            raise AccessDenied("start_line must be a positive integer")
+        if end_line is not None and (not isinstance(end_line, int) or end_line < start_line):
+            raise AccessDenied("end_line must be an integer greater than or equal to start_line")
+        requested_end = end_line if end_line is not None else start_line + MAX_READ_LINES - 1
+        capped_end = min(requested_end, start_line + MAX_READ_LINES - 1)
+        lines: List[Dict[str, Any]] = []
+        with target.open("r", encoding="utf-8") as handle:
+            for line_number, line in enumerate(handle, start=1):
+                if line_number < start_line:
+                    continue
+                if line_number > capped_end:
+                    break
+                lines.append({"line": line_number, "text": line.rstrip("\n")})
+        actual_end = lines[-1]["line"] if lines else start_line - 1
+        return {
+            "path": self.relative_path(workspace_id, target),
+            "start_line": start_line,
+            "end_line": actual_end,
+            "requested_end_line": requested_end,
+            "max_lines": MAX_READ_LINES,
+            "truncated": requested_end > capped_end,
+            "lines": lines,
+        }
 
     def write_file(
         self,
@@ -556,6 +609,19 @@ class FullAgentWorkspaceManager:
     def _resolve_requested_workspace(self, path_value: str) -> Path:
         if not isinstance(path_value, str) or not path_value.strip():
             raise AccessDenied("workspace path must be a non-empty string")
+        alias = path_value.strip().lower()
+        if self.profile == PROFILE_CONNECTED_AGENT and alias in {
+            "default",
+            "default_workspace",
+            "authorized_workspace",
+        }:
+            if len(self.allowed_roots) != 1:
+                raise AccessDenied(
+                    "default workspace alias requires exactly one configured allowed root; "
+                    "ask Codex or the user to disambiguate the authorized workspace "
+                    "instead of guessing or passing a local absolute path"
+                )
+            return self.allowed_roots[0]
         requested = Path(path_value).expanduser().resolve(strict=True)
         if not requested.is_dir():
             raise AccessDenied("workspace path must be a directory")
@@ -810,11 +876,29 @@ def validate_allowed_roots(roots: List[Path]) -> List[Path]:
 
 
 def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
+    open_default_workspace_tool = {
+        "name": "open_default_workspace",
+        "title": "Open Default Workspace",
+        "description": (
+            "Open the single configured allowed-root workspace without passing a "
+            "local filesystem path. Use this first in Connected Agent mode when "
+            "one allowed root is configured."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    }
     base_tools = [
         {
             "name": "open_workspace",
             "title": "Open Workspace",
-            "description": "Open a configured allowed-root workspace and return a workspace_id.",
+            "description": (
+                "Open a configured allowed-root workspace and return a workspace_id. "
+                "In Connected Agent mode, when exactly one allowed root is configured, "
+                'path "default" opens that root without passing a local filesystem path.'
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {"path": {"type": "string"}},
@@ -824,7 +908,29 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
         },
         _path_tool("ls", "List Directory", "List files and directories in an opened workspace."),
         _path_tool("read", "Read File", "Read a UTF-8 file in an opened workspace."),
+        {
+            "name": "read_lines",
+            "title": "Read Lines",
+            "description": (
+                "Read a bounded 1-based line range from a UTF-8 file in an opened "
+                "workspace. Use this for large task-relevant text files instead of "
+                "reading the whole file."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string"},
+                    "path": {"type": "string"},
+                    "start_line": {"type": "integer"},
+                    "end_line": {"type": "integer"},
+                },
+                "required": ["workspace_id", "path", "start_line"],
+                "additionalProperties": False,
+            },
+        },
     ]
+    if profile == PROFILE_CONNECTED_AGENT:
+        base_tools = [open_default_workspace_tool] + base_tools
     search_tools = [
         {
             "name": "grep",
@@ -1035,6 +1141,9 @@ def _call_tool(params: Dict[str, Any], manager: FullAgentWorkspaceManager) -> Di
         arguments = _arguments_dict(params.get("arguments"))
         if name not in manager.tool_names:
             return _tool_error(f"Tool is not available in {manager.profile} mode: {name}")
+        if name == "open_default_workspace":
+            result = manager.open_default_workspace()
+            return _tool_result(json.dumps(result, indent=2), result)
         if name == "open_workspace":
             result = manager.open_workspace(_required_string(arguments, "path"))
             return _tool_result(json.dumps(result, indent=2), result)
@@ -1046,7 +1155,21 @@ def _call_tool(params: Dict[str, Any], manager: FullAgentWorkspaceManager) -> Di
                 _required_string(arguments, "workspace_id"),
                 _required_string(arguments, "path"),
             )
-            return _tool_result(content, {"content": content, "path": arguments["path"]})
+            return _tool_result(
+                content,
+                {
+                    "path": arguments["path"],
+                    "bytes": len(content.encode("utf-8")),
+                },
+            )
+        if name == "read_lines":
+            result = manager.read_lines(
+                _required_string(arguments, "workspace_id"),
+                _required_string(arguments, "path"),
+                _required_int(arguments, "start_line"),
+                _optional_int(arguments, "end_line"),
+            )
+            return _tool_result(json.dumps(result, indent=2), result)
         if name == "write":
             _require_strings(arguments, ["workspace_id", "path", "content"])
             result = manager.write_file(
@@ -1163,16 +1286,25 @@ def _initialize_result(
             if manager.profile == PROFILE_FULL_AGENT
             else (
                 "Connected Agent mode can read and search opened workspaces under "
-                "configured allowed roots by default. In default mode, write, edit, "
-                "and bash return a one-action approval_id; ask the user to approve "
-                "that exact action in chat, call grant_action_approval, then retry "
-                "the original tool call once with approval_id. Do not suggest the "
-                f"`{DANGER_AUTO_PHRASE}` phrase for ordinary one-off writes, edits, "
-                "or bash commands. That phrase is only a hidden high-risk automation "
-                "switch typed by the user. Server policy still blocks credential "
-                "paths, network commands, GUI/clipboard commands, path escapes, Git "
-                "remote operations, dependency installs, and broad destructive "
-                "commands unless explicitly allowed by policy."
+                "configured allowed roots by default. If one allowed root is "
+                "configured, call open_default_workspace first to avoid passing a "
+                "local absolute path through the web advisor. If the client has a "
+                "stale schema without open_default_workspace, call open_workspace "
+                "with path exactly \"default\" instead of a /Users/... path. Whole-file "
+                "read accepts task-relevant UTF-8 source files up to 1 MB; use "
+                "targeted grep plus read_lines for larger source files, and skip "
+                "node_modules, build outputs, sourcemaps, image galleries, and "
+                "dependency artifacts unless the task explicitly requires them. In default mode, "
+                "write, edit, and bash return a one-action approval_id; ask the "
+                "user to approve that exact action in chat, call "
+                "grant_action_approval, then retry the original tool call once "
+                "with approval_id. Do not suggest the "
+                f"`{DANGER_AUTO_PHRASE}` phrase for ordinary one-off writes, "
+                "edits, or bash commands. That phrase is only a hidden high-risk "
+                "automation switch typed by the user. Server policy still blocks "
+                "credential paths, network commands, GUI/clipboard commands, "
+                "path escapes, Git remote operations, dependency installs, and "
+                "broad destructive commands unless explicitly allowed by policy."
                 if manager.profile == PROFILE_CONNECTED_AGENT
                 else "Read-Only Project Advisor mode can list, read, glob, and grep "
                 "opened workspaces under configured allowed roots. It cannot write files "
@@ -1207,6 +1339,22 @@ def _required_string(arguments: Dict[str, Any], name: str) -> str:
     value = arguments.get(name)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"Missing required string argument: {name}")
+    return value
+
+
+def _required_int(arguments: Dict[str, Any], name: str) -> int:
+    value = arguments.get(name)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"Missing required integer argument: {name}")
+    return value
+
+
+def _optional_int(arguments: Dict[str, Any], name: str) -> Optional[int]:
+    value = arguments.get(name)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"Optional argument must be an integer: {name}")
     return value
 
 

@@ -33,6 +33,13 @@ DEFAULT_PREFLIGHT_RETRY_SECONDS = 8.0
 DEFAULT_HEALTH_ATTEMPTS = 5
 DEFAULT_HEALTH_RETRY_SECONDS = 4.0
 DEFAULT_HEALTH_RECOVERY_ATTEMPTS = 1
+FAST_PUBLIC_WARMUP_SECONDS = 5.0
+FAST_PREFLIGHT_TIMEOUT_SECONDS = 12.0
+FAST_PREFLIGHT_ATTEMPTS = 2
+FAST_PREFLIGHT_RETRY_SECONDS = 3.0
+FAST_HEALTH_ATTEMPTS = 1
+FAST_HEALTH_RETRY_SECONDS = 0.0
+FAST_HEALTH_RECOVERY_ATTEMPTS = 0
 DEFAULT_IDLE_TIMEOUT_SECONDS = 1200
 NOT_CONSULTED_NOTICE = (
     "GPT Pro has not been consulted yet; the system is still preparing or waiting."
@@ -42,9 +49,9 @@ BROWSER_AUTOMATION_NOTICE = (
     "如果不方便，改用 user-web 手动粘贴。"
 )
 MODEL_SELECTION_NOTICE = (
-    "Model selection: use GPT-5.5 Thinking for MCP/App connector calls. "
-    "Do not use GPT-5.5 Pro for this step because Pro models do not expose "
-    "ChatGPT Apps/MCP tools."
+    "ChatGPT Web setup: use a chat mode where Apps/MCP connector tools are "
+    "visible. If the Connected Agent connector is not visible, switch to a "
+    "tool-capable ChatGPT mode or use Ask First for manual GPT Pro review."
 )
 
 
@@ -73,16 +80,28 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         default="unknown",
     )
     prepare.add_argument("--idle-timeout-seconds", type=int, default=DEFAULT_IDLE_TIMEOUT_SECONDS)
-    prepare.add_argument("--public-warmup-seconds", type=float, default=DEFAULT_PUBLIC_WARMUP_SECONDS)
-    prepare.add_argument("--preflight-timeout", type=float, default=DEFAULT_PREFLIGHT_TIMEOUT_SECONDS)
-    prepare.add_argument("--preflight-attempts", type=int, default=DEFAULT_PREFLIGHT_ATTEMPTS)
-    prepare.add_argument("--preflight-retry-seconds", type=float, default=DEFAULT_PREFLIGHT_RETRY_SECONDS)
-    prepare.add_argument("--health-attempts", type=int, default=DEFAULT_HEALTH_ATTEMPTS)
-    prepare.add_argument("--health-retry-seconds", type=float, default=DEFAULT_HEALTH_RETRY_SECONDS)
+    prepare.add_argument(
+        "--speed",
+        choices=["fast", "safe"],
+        default="fast",
+        help="fast is the product default; safe keeps the conservative repeated health probes.",
+    )
+    prepare.add_argument(
+        "--output",
+        choices=["compact", "verbose"],
+        default="compact",
+        help="compact prints a product status card; verbose includes helper command output.",
+    )
+    prepare.add_argument("--public-warmup-seconds", type=float)
+    prepare.add_argument("--preflight-timeout", type=float)
+    prepare.add_argument("--preflight-attempts", type=int)
+    prepare.add_argument("--preflight-retry-seconds", type=float)
+    prepare.add_argument("--health-attempts", type=int)
+    prepare.add_argument("--health-retry-seconds", type=float)
     prepare.add_argument(
         "--health-recovery-attempts",
         type=int,
-        default=DEFAULT_HEALTH_RECOVERY_ATTEMPTS,
+        default=None,
         help="Extra full health checks to run only after an intermittent first result.",
     )
     prepare.add_argument("--no-clipboard", action="store_true", help="Print prompt only.")
@@ -131,13 +150,19 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 
 def prepare(args: argparse.Namespace) -> int:
-    print("Current state: connected_agent_flow_starting")
-    print("Requested mode: connected-agent")
-    print("Risk if opened: 3/5-5/5")
+    apply_speed_profile(args)
+    print_status_card(
+        args,
+        state="starting",
+        current_step="advisor-gate",
+        next_action="verify advisor channel before opening the task window",
+    )
 
     if not args.public_base_url:
-        print("Current state: connected_agent_flow_failed")
-        print("Config error: --public-base-url or DECISION_INBOX_PUBLIC_BASE_URL is required.")
+        print_failure(
+            "connected_agent_flow_failed",
+            "Config error: --public-base-url or DECISION_INBOX_PUBLIC_BASE_URL is required.",
+        )
         print(NOT_CONSULTED_NOTICE)
         return 2
 
@@ -147,54 +172,55 @@ def prepare(args: argparse.Namespace) -> int:
         advisor_health=args.advisor_health,
         session_state="not_open",
     )
-    print("Advisor gate:")
-    print(indent(str(gate["message"])))
+    print_gate_result(args, gate)
     if int(gate["exit_code"]) != 0:
         return int(gate["exit_code"])
 
-    print("Opening Connected Agent session and public tunnel...")
+    print("Opening Connected Agent task window...")
     open_result = run_command(build_open_command(args))
-    print("Open session:")
-    print(indent(open_result.stdout.strip()))
+    print_command_result(args, "Open session", open_result)
     if open_result.returncode != 0:
-        print("Current state: connected_agent_flow_failed")
+        print_failure("connected_agent_flow_failed", "Connected Agent session could not be opened.")
         print(NOT_CONSULTED_NOTICE)
         return open_result.returncode
 
     health_result = check_public_health_with_recovery(args)
     if not health_is_stable(health_result):
-        print("Current state: connected_agent_flow_failed")
-        print("Reason: public health is not stable; closing the Connected Agent window.")
+        print_failure(
+            "connected_agent_flow_failed",
+            "public health is not stable; closing the Connected Agent window.",
+        )
         close()
         print(NOT_CONSULTED_NOTICE)
         return 1
 
     print("Generating compact ChatGPT Web prompt...")
     prompt_result = run_command(build_prompt_command(args))
-    print("Prompt preparation:")
-    print(indent(prompt_result.stdout.strip()))
-    if prompt_result.stderr.strip():
-        print("Prompt stderr:")
-        print(indent(prompt_result.stderr.strip()))
+    print_command_result(args, "Prompt preparation", prompt_result)
     if prompt_result.returncode != 0:
-        print("Current state: connected_agent_flow_failed")
-        print("Reason: prompt generation failed; closing the Connected Agent window before retrying.")
+        print_failure(
+            "connected_agent_flow_failed",
+            "prompt generation failed; closing the Connected Agent window before retrying.",
+        )
         close()
         print(NOT_CONSULTED_NOTICE)
         return prompt_result.returncode
 
-    print("Current state: connected_agent_flow_ready_for_advisor")
-    print("Risk while session remains open: 3/5-5/5; Danger Auto is 5/5")
+    print_status_card(
+        args,
+        state="ready_for_advisor",
+        current_step="web-consult",
+        next_action=handoff_next_action(args.advisor_channel),
+    )
     print(render_handoff(args.advisor_channel))
-    print("Close command: python3 scripts/level3_consultation_flow.py close")
+    print("Close command: python3 scripts/connected_agent_flow.py close")
     return 0
 
 
 def check_public_health_with_recovery(args: argparse.Namespace) -> subprocess.CompletedProcess[str]:
     print("Checking public Connected Agent health...")
     result = run_command(build_health_command(args))
-    print("Public health:")
-    print(indent(result.stdout.strip()))
+    print_command_result(args, "Public health", result, summary=public_health_summary(result.stdout))
     if health_is_stable(result) or not health_is_intermittent(result):
         return result
 
@@ -202,8 +228,12 @@ def check_public_health_with_recovery(args: argparse.Namespace) -> subprocess.Co
     for attempt in range(1, attempts + 1):
         print(f"Public health was intermittent; running recovery check {attempt}/{attempts}...")
         result = run_command(build_health_command(args))
-        print("Public health recovery:")
-        print(indent(result.stdout.strip()))
+        print_command_result(
+            args,
+            "Public health recovery",
+            result,
+            summary=public_health_summary(result.stdout),
+        )
         if health_is_stable(result) or not health_is_intermittent(result):
             return result
     return result
@@ -314,6 +344,120 @@ def build_open_command(args: argparse.Namespace) -> List[str]:
     ]
 
 
+def apply_speed_profile(args: argparse.Namespace) -> None:
+    if args.speed == "safe":
+        defaults = {
+            "public_warmup_seconds": DEFAULT_PUBLIC_WARMUP_SECONDS,
+            "preflight_timeout": DEFAULT_PREFLIGHT_TIMEOUT_SECONDS,
+            "preflight_attempts": DEFAULT_PREFLIGHT_ATTEMPTS,
+            "preflight_retry_seconds": DEFAULT_PREFLIGHT_RETRY_SECONDS,
+            "health_attempts": DEFAULT_HEALTH_ATTEMPTS,
+            "health_retry_seconds": DEFAULT_HEALTH_RETRY_SECONDS,
+            "health_recovery_attempts": DEFAULT_HEALTH_RECOVERY_ATTEMPTS,
+        }
+    else:
+        defaults = {
+            "public_warmup_seconds": FAST_PUBLIC_WARMUP_SECONDS,
+            "preflight_timeout": FAST_PREFLIGHT_TIMEOUT_SECONDS,
+            "preflight_attempts": FAST_PREFLIGHT_ATTEMPTS,
+            "preflight_retry_seconds": FAST_PREFLIGHT_RETRY_SECONDS,
+            "health_attempts": FAST_HEALTH_ATTEMPTS,
+            "health_retry_seconds": FAST_HEALTH_RETRY_SECONDS,
+            "health_recovery_attempts": FAST_HEALTH_RECOVERY_ATTEMPTS,
+        }
+    for key, value in defaults.items():
+        if getattr(args, key) is None:
+            setattr(args, key, value)
+
+
+def print_status_card(
+    args: argparse.Namespace,
+    *,
+    state: str,
+    current_step: str,
+    next_action: str,
+) -> None:
+    print(f"Current state: connected_agent_flow_{state}")
+    print(f"Connected Agent: {state}")
+    print(f"Advisor channel: {args.advisor_channel} / {args.advisor_health}")
+    print(f"Workspace: {Path(args.allowed_root).expanduser()}")
+    print("Risk while online: 3/5-5/5; Danger Auto 5/5")
+    print(f"Speed profile: {args.speed}")
+    print(f"Current step: {current_step}")
+    print(f"Next action: {next_action}")
+
+
+def print_failure(state: str, reason: str) -> None:
+    print(f"Current state: {state}")
+    print(f"Reason: {reason}")
+
+
+def print_gate_result(args: argparse.Namespace, gate: dict[str, object]) -> None:
+    message = str(gate["message"])
+    if args.output == "verbose":
+        print("Advisor gate:")
+        print(indent(message))
+        return
+    if int(gate["exit_code"]) == 0:
+        print("Advisor gate: ready")
+        return
+
+    lines = parse_status_lines(message)
+    print(f"Advisor gate: {lines.get('Current state', 'blocked')}")
+    if reason := lines.get("Reason"):
+        print(f"Reason: {reason}")
+    if next_step := lines.get("Next step"):
+        print(f"Next action: {next_step}")
+    if NOT_CONSULTED_NOTICE in message:
+        print(NOT_CONSULTED_NOTICE)
+
+
+def print_command_result(
+    args: argparse.Namespace,
+    title: str,
+    result: subprocess.CompletedProcess[str],
+    *,
+    summary: Optional[str] = None,
+) -> None:
+    if summary and result.returncode == 0 and args.output == "compact":
+        print(f"{title}: {summary}")
+        return
+    if result.returncode == 0 and args.output == "compact":
+        print(f"{title}: ok")
+        return
+    print(f"{title}:")
+    print(indent(result.stdout.strip()))
+    if result.stderr.strip():
+        print(f"{title} stderr:")
+        print(indent(result.stderr.strip()))
+
+
+def public_health_summary(output: str) -> str:
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Public health:"):
+            return stripped.split(":", 1)[1].strip()
+    return "ok"
+
+
+def parse_status_lines(message: str) -> dict[str, str]:
+    parsed = {}
+    for line in message.splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        parsed[key.strip()] = value.strip()
+    return parsed
+
+
+def handoff_next_action(advisor_channel: str) -> str:
+    if advisor_channel == "browser-automation":
+        return "Codex sends the copied prompt in ChatGPT Web"
+    if advisor_channel == "direct-tool":
+        return "Codex calls the available advisor channel"
+    return "user sends the copied prompt in ChatGPT Web"
+
+
 def build_health_command(args: argparse.Namespace) -> List[str]:
     return [
         sys.executable,
@@ -409,7 +553,7 @@ def render_handoff(advisor_channel: str) -> str:
         [
             MODEL_SELECTION_NOTICE,
             "Next step for the user:",
-            "  Open a ChatGPT Web conversation using GPT-5.5 Thinking with the Connected Agent connector attached.",
+            "  Open a ChatGPT Web conversation where the Connected Agent connector is visible.",
             "  Paste and send the copied prompt.",
             "  When ChatGPT finishes, paste the answer back into Codex.",
             "  Codex will classify the advice as Adopt / Ask / Reject and close the loop.",
