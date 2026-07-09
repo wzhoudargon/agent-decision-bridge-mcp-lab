@@ -11,6 +11,7 @@ Start here:
   connector setup details.
 - [Security Summary](docs/security-public.md): the short safety model for web
   advisor reads.
+- [Update Notes](docs/update-notes.md): latest repository-facing change log.
 
 The short version:
 
