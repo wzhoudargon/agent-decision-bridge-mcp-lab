@@ -8,16 +8,16 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import level3_status
+import connected_agent_status
 
 
-class Level3StatusTests(unittest.TestCase):
+class ConnectedAgentStatusTests(unittest.TestCase):
     def test_reports_gate_session_and_funnel_status(self):
         session = subprocess.CompletedProcess(
-            args=["python", "full_agent_session.py", "status"],
+            args=["python", "connected_agent_session.py", "status"],
             returncode=1,
             stdout=(
-                "Current state: full_agent_session_closed\n"
+                "Current state: connected_agent_session_closed\n"
                 "Risk coefficient now: 2/5 if persistent OAuth state remains, otherwise 1/5\n"
             ),
         )
@@ -27,16 +27,16 @@ class Level3StatusTests(unittest.TestCase):
             stdout="No serve config\n",
         )
 
-        with mock.patch.object(level3_status, "run_status", side_effect=[session, funnel]):
+        with mock.patch.object(connected_agent_status, "run_status", side_effect=[session, funnel]):
             with mock.patch.object(sys, "argv", [
-                "level3_status.py",
+                "connected_agent_status.py",
                 "--advisor-channel",
                 "browser-automation",
                 "--advisor-health",
                 "needs-browser-restart",
             ]):
                 with mock.patch("builtins.print") as print_:
-                    status = level3_status.main()
+                    status = connected_agent_status.main()
 
         self.assertEqual(status, 2)
         output = print_.call_args.args[0]
@@ -50,12 +50,12 @@ class Level3StatusTests(unittest.TestCase):
         self.assertIn("Connected Agent readiness:", output)
         self.assertIn("Current state: waiting_for_advisor_channel", output)
         self.assertIn("restart the browser after user confirmation", output)
-        self.assertIn("Current state: full_agent_session_closed", output)
+        self.assertIn("Current state: connected_agent_session_closed", output)
         self.assertIn("No serve config", output)
 
     def test_summary_reports_ready_to_open(self):
-        summary = level3_status.summarize_state(
-            "Current state: full_agent_session_closed\n",
+        summary = connected_agent_status.summarize_state(
+            "Current state: connected_agent_session_closed\n",
             "No serve config\n",
             "\n".join(
                 [

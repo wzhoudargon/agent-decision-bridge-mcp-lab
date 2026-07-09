@@ -148,7 +148,7 @@ Persistent OAuth state rules:
   `~/.local/share/agent-decision-bridge/`.
 - State files must stay outside the repo and use mode `0600`.
 - Authorization codes must not be persisted.
-- Use `scripts/reset_decision_inbox_auth.py --full-agent-defaults` or explicit
+- Use `scripts/reset_decision_inbox_auth.py --connected-agent-defaults` or explicit
   state/Owner-password paths to revoke local connector state.
 
 Connected Agent mode:
@@ -165,7 +165,7 @@ Connected Agent mode:
 
 Connected Agent session-window rule:
 
-- prefer `scripts/full_agent_session.py` for product use,
+- prefer `scripts/connected_agent_session.py` for product use,
 - verify that a real advisor channel is available before opening the public
   Connected Agent window,
 - require a ChatGPT Web mode where Apps/MCP connector tools are visible for

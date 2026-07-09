@@ -10,7 +10,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scripts import level3_consultation_flow as flow
+from scripts import connected_agent_consultation_flow as flow
 from scripts import connected_agent_flow
 
 
@@ -18,9 +18,9 @@ def completed(stdout: str = "", returncode: int = 0) -> subprocess.CompletedProc
     return subprocess.CompletedProcess(args=["cmd"], returncode=returncode, stdout=stdout, stderr="")
 
 
-class Level3ConsultationFlowTests(unittest.TestCase):
+class ConnectedAgentConsultationFlowTests(unittest.TestCase):
     def test_connected_agent_flow_alias_delegates_to_wrapper(self):
-        with mock.patch.object(connected_agent_flow, "level3_main", return_value=0) as main:
+        with mock.patch.object(connected_agent_flow, "connected_agent_main", return_value=0) as main:
             status = connected_agent_flow.main(["close"])
 
         self.assertEqual(status, 0)
@@ -29,7 +29,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
     def test_prepare_opens_checks_health_and_copies_prompt(self):
         stdout = StringIO()
         results = [
-            completed("Current state: full_agent_session_open\n"),
+            completed("Current state: connected_agent_session_open\n"),
             completed("Public health: stable preflight_passed=3/3\n"),
             completed("Current state: connected_agent_prompt_ready\nClipboard: copied\n"),
         ]
@@ -125,7 +125,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
     def test_browser_automation_handoff_warns_that_computer_is_controlled(self):
         stdout = StringIO()
         results = [
-            completed("Current state: full_agent_session_open\n"),
+            completed("Current state: connected_agent_session_open\n"),
             completed("Public health: stable preflight_passed=3/3\n"),
             completed("Current state: connected_agent_prompt_ready\nClipboard: copied\n"),
         ]
@@ -157,11 +157,11 @@ class Level3ConsultationFlowTests(unittest.TestCase):
     def test_prepare_closes_when_public_health_is_not_stable(self):
         stdout = StringIO()
         results = [
-            completed("Current state: full_agent_session_open\n"),
+            completed("Current state: connected_agent_session_open\n"),
             completed("Public health: intermittent preflight_passed=1/3 latest_failure=timeout\n"),
             completed("Public health: failed preflight_passed=0/3 latest_failure=timeout\n", returncode=1),
-            completed("Current state: full_agent_session_closed\n"),
-            completed("Current state: full_agent_session_closed\nPublic health: skipped_session_not_open\n", returncode=1),
+            completed("Current state: connected_agent_session_closed\n"),
+            completed("Current state: connected_agent_session_closed\nPublic health: skipped_session_not_open\n", returncode=1),
         ]
 
         with mock.patch.object(flow, "run_command", side_effect=results) as run:
@@ -194,7 +194,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
     def test_prepare_recovers_when_second_health_check_is_stable(self):
         stdout = StringIO()
         results = [
-            completed("Current state: full_agent_session_open\n"),
+            completed("Current state: connected_agent_session_open\n"),
             completed("Public health: intermittent preflight_passed=2/3 latest_failure=timeout\n"),
             completed("Public health: stable preflight_passed=3/3\n"),
             completed("Current state: connected_agent_prompt_ready\nClipboard: copied\n"),
@@ -228,10 +228,10 @@ class Level3ConsultationFlowTests(unittest.TestCase):
     def test_prepare_does_not_recover_after_failed_health(self):
         stdout = StringIO()
         results = [
-            completed("Current state: full_agent_session_open\n"),
+            completed("Current state: connected_agent_session_open\n"),
             completed("Public health: failed preflight_passed=0/3 latest_failure=timeout\n", returncode=1),
-            completed("Current state: full_agent_session_closed\n"),
-            completed("Current state: full_agent_session_closed\nPublic health: skipped_session_not_open\n", returncode=1),
+            completed("Current state: connected_agent_session_closed\n"),
+            completed("Current state: connected_agent_session_closed\nPublic health: skipped_session_not_open\n", returncode=1),
         ]
 
         with mock.patch.object(flow, "run_command", side_effect=results) as run:
@@ -283,11 +283,11 @@ class Level3ConsultationFlowTests(unittest.TestCase):
     def test_prepare_closes_when_prompt_generation_fails(self):
         stdout = StringIO()
         results = [
-            completed("Current state: full_agent_session_open\n"),
+            completed("Current state: connected_agent_session_open\n"),
             completed("Public health: stable preflight_passed=3/3\n"),
             completed("Clipboard: failed\n", returncode=1),
-            completed("Current state: full_agent_session_closed\n"),
-            completed("Current state: full_agent_session_closed\nPublic health: skipped_session_not_open\n", returncode=1),
+            completed("Current state: connected_agent_session_closed\n"),
+            completed("Current state: connected_agent_session_closed\nPublic health: skipped_session_not_open\n", returncode=1),
         ]
 
         with mock.patch.object(flow, "run_command", side_effect=results) as run:
@@ -318,7 +318,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
         stdout = StringIO()
         results = [
             completed("Current state: review_only\nCaptured advice.\n"),
-            completed("Current state: full_agent_session_touched\nRisk coefficient while open: 3/5-5/5\n"),
+            completed("Current state: connected_agent_session_touched\nRisk coefficient while open: 3/5-5/5\n"),
         ]
 
         with mock.patch.object(flow.sys, "stdin", StringIO("Adopt: keep user-web.\n")):
@@ -341,7 +341,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
         self.assertEqual(run.call_count, 2)
         capture_call = run.call_args_list[0]
         capture_command = capture_call.args[0]
-        self.assertIn(str(flow.LEVEL3_CAPTURE), capture_command)
+        self.assertIn(str(flow.CONNECTED_AGENT_CAPTURE), capture_command)
         self.assertIn("Review Connected Agent readiness.", capture_command)
         self.assertEqual(capture_call.kwargs["input_text"], "Adopt: keep user-web.\n")
         output = stdout.getvalue()
@@ -355,8 +355,8 @@ class Level3ConsultationFlowTests(unittest.TestCase):
         stdout = StringIO()
         results = [
             completed("Current state: review_only\nCaptured advice.\n"),
-            completed("Current state: full_agent_session_closed\n"),
-            completed("Current state: full_agent_session_closed\nPublic health: skipped_session_not_open\n", returncode=1),
+            completed("Current state: connected_agent_session_closed\n"),
+            completed("Current state: connected_agent_session_closed\nPublic health: skipped_session_not_open\n", returncode=1),
         ]
 
         with mock.patch.object(flow.sys, "stdin", StringIO("Adopt: keep user-web.\n")):
@@ -384,7 +384,7 @@ class Level3ConsultationFlowTests(unittest.TestCase):
         stdout = StringIO()
         results = [
             completed("", returncode=1),
-            completed("Current state: full_agent_session_touched\nRisk coefficient while open: 3/5-5/5\n"),
+            completed("Current state: connected_agent_session_touched\nRisk coefficient while open: 3/5-5/5\n"),
         ]
 
         with mock.patch.object(flow.sys, "stdin", StringIO("")):

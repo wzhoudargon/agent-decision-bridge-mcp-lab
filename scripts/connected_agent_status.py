@@ -11,7 +11,7 @@ from conversation_product_gate import evaluate_gate
 
 
 ROOT = Path(__file__).resolve().parents[1]
-FULL_AGENT_SESSION = ROOT / "scripts" / "full_agent_session.py"
+CONNECTED_AGENT_SESSION = ROOT / "scripts" / "connected_agent_session.py"
 DEFAULT_TAILSCALE_SOCKET = "/tmp/tailscaled-decision-inbox.sock"
 
 
@@ -36,7 +36,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(argv)
-    session = run_status([sys.executable, str(FULL_AGENT_SESSION), "status"])
+    session = run_status([sys.executable, str(CONNECTED_AGENT_SESSION), "status"])
     funnel = run_status([args.tailscale_bin, "--socket", args.socket, "funnel", "status"])
     session_state = parse_session_state(session.stdout)
     gate = evaluate_gate(
@@ -84,7 +84,7 @@ def render_report(
 
 def summarize_state(session_output: str, funnel_output: str, gate_message: str) -> str:
     session_state = parse_session_state(session_output)
-    session_closed = session_state == "full_agent_session_closed"
+    session_closed = session_state == "connected_agent_session_closed"
     funnel_closed = "No serve config" in funnel_output
     waiting_for_advisor = "Current state: waiting_for_advisor_channel" in gate_message
     ready_to_open = "Current state: ready_to_open_connected_agent" in gate_message

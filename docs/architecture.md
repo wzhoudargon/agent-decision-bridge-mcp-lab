@@ -139,7 +139,7 @@ Role:
 - provides Tailscale Funnel open/status/close lifecycle management through
   `scripts/decision_inbox_tunnel_window.py`.
 - provides Connected Agent task-window lifecycle management through
-  `scripts/full_agent_session.py`.
+  `scripts/connected_agent_session.py`.
 - prepares Manual Package / legacy package-only consultation tasks through
   `scripts/prepare_consultation.py`.
 
@@ -177,7 +177,7 @@ make the current access boundary unclear.
 
 ## Connected Agent Mode
 
-The product second tier lets ChatGPT Web inspect and, when approved, modify
+Connected Agent lets ChatGPT Web inspect and, when approved, modify
 necessary project context directly without a decision package:
 
 - `--mode connected-agent` is required,
@@ -225,7 +225,7 @@ tests:
   `~/.local/share/agent-decision-bridge/`,
 - risk is always `5/5`.
 
-Connected Agent is the product second tier. The part borrowed by default is connector hygiene:
+Connected Agent is the project-aware product mode. The part borrowed by default is connector hygiene:
 self-hosted server, explicit
 public base URL, Host allowlist, local doctor, preflight, and cleanup discipline.
 
@@ -247,13 +247,13 @@ user to manually keep backend commands running.
 
 ```text
 Codex task
-  -> scripts/full_agent_session.py open
+  -> scripts/connected_agent_session.py open
   -> Connected Agent HTTP MCP server
   -> Tailscale Funnel public URL
   -> ChatGPT Connected Agent connector
   -> advisor result
   -> Codex import/classification: Adopt / Ask / Reject
-  -> scripts/full_agent_session.py touch after active steps
+  -> scripts/connected_agent_session.py touch after active steps
   -> watchdog closes server and Funnel after idle timeout
 ```
 

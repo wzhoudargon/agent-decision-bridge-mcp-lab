@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Full-Agent MCP backend with explicit workspace roots and shell access."""
+"""Connected Agent MCP backend with explicit workspace roots and approval gates."""
 
 import argparse
 import hashlib
@@ -15,7 +15,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 
 PROTOCOL_VERSION = "2025-11-25"
-SERVER_NAME = "agent-decision-bridge-full-agent"
+SERVER_NAME = "agent-decision-bridge-connected-agent"
 SERVER_VERSION = "0.1.0"
 MAX_COMMAND_SECONDS = 30
 MAX_COMMAND_OUTPUT_BYTES = 200_000
@@ -168,7 +168,7 @@ class ApprovalRequired(Exception):
 
 
 class AccessDenied(Exception):
-    """Raised when a request escapes the configured Full-Agent boundary."""
+    """Raised when a request escapes the configured workspace boundary."""
 
 
 class WorkspaceNotFound(Exception):
@@ -860,7 +860,7 @@ class FullAgentWorkspaceManager:
 
 def validate_allowed_roots(roots: List[Path]) -> List[Path]:
     if not roots:
-        raise ValueError("Full-Agent mode requires at least one --allowed-root")
+        raise ValueError("Connected Agent workspace mode requires at least one --allowed-root")
     home = Path.home().resolve()
     normalized: List[Path] = []
     for root in roots:
@@ -1481,7 +1481,7 @@ def run_stdio(manager: FullAgentWorkspaceManager, lines: Iterable[str]) -> int:
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run Full-Agent MCP over stdio.")
+    parser = argparse.ArgumentParser(description="Run Connected Agent workspace MCP over stdio.")
     parser.add_argument("--allowed-root", type=Path, action="append", required=True)
     parser.add_argument(
         "--profile",

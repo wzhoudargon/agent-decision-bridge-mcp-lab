@@ -244,7 +244,7 @@ def build_report(args: argparse.Namespace) -> List[str]:
     return [
         "Current state: connector_diagnostic",
         f"Mode: {mode}",
-        f"Product tier: {product_tier(mode)}",
+        f"Product mode: {product_mode(mode)}",
         f"Risk coefficient: {risk}/5",
         f"Risk reason: {risk_reason}",
         f"Local MCP URL: {args.local_url}",
@@ -273,7 +273,7 @@ def default_owner_token_file(mode: str) -> Path:
     return DEFAULT_OWNER_TOKEN_FILE
 
 
-def product_tier(mode: str) -> str:
+def product_mode(mode: str) -> str:
     if mode == MODE_ASK_FIRST:
         return "Ask First"
     if mode == MODE_CONNECTED_AGENT:

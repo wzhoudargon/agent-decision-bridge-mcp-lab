@@ -12,8 +12,8 @@ across the repository.
 - Added `docs/user-guide.md` as the main user-facing guide.
 - Renamed the non-technical Connected Agent flow to
   `docs/connected-agent-user-flow.md`.
-- Moved superseded tiered-mode drafts and older live-verification notes into
-  `docs/archive/`.
+- Removed superseded multi-tier drafts and older live-verification notes from
+  the public repository.
 - Removed platform-upload packaging and promotional card assets from repository
   tracking so the GitHub repository stays focused on Agent Decision Bridge.
 - Removed stale model/version wording from current docs and user-visible
@@ -32,13 +32,13 @@ across the repository.
   Apps/MCP connector tools. Read/search/list are automatic; write/edit/bash use
   one-action approval by default. Risk `3/5-5/5`.
 
-Historical documents may still mention older tier names inside `docs/archive/`.
-Those files are retained as implementation evidence only and are not current
-product documentation.
+Older compatibility names remain only where they are needed to explain legacy
+CLI modes, test coverage, or migration behavior. They are not current product
+documentation.
 
 ### Validation
 
-- Current public docs scan clean for superseded tier/model/version wording.
+- Current public docs scan clean for superseded model/version wording.
 - Checked Markdown links in the current entry documents.
 - Ran the full Python test suite:
   `python3 -m unittest discover -s tests`

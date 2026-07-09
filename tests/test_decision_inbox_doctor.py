@@ -198,7 +198,7 @@ class DecisionInboxDoctorTests(unittest.TestCase):
         report = "\n".join(doctor.build_report(args))
 
         self.assertIn("Mode: connected-agent", report)
-        self.assertIn("Product tier: Connected Agent", report)
+        self.assertIn("Product mode: Connected Agent", report)
         self.assertIn("Risk coefficient: 4/5", report)
         self.assertIn(".local/share/agent-decision-bridge/oauth-state.json", report)
 
@@ -219,7 +219,7 @@ class DecisionInboxDoctorTests(unittest.TestCase):
         report = "\n".join(doctor.build_report(args))
 
         self.assertIn("Mode: ask-first", report)
-        self.assertIn("Product tier: Ask First", report)
+        self.assertIn("Product mode: Ask First", report)
         self.assertIn("Risk coefficient: 1/5", report)
 
 

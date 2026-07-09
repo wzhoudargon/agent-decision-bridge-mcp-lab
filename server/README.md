@@ -7,7 +7,7 @@ Current local file:
 - `restricted_test_workspace_server.py`: a minimal stdio JSON-RPC MCP server for Phase 1 synthetic workspace access testing.
 - `decision_inbox_store.py`: file-backed Decision Inbox storage with task id validation and restricted writes.
 - `decision_inbox_server.py`: legacy package/advice/status server over stdio JSON-RPC.
-- `full_agent_server.py`: workspace MCP backend with connected-agent, read-only-project, and full-agent profiles.
+- `connected_agent_server.py`: workspace MCP backend with connected-agent, read-only-project, and full-agent compatibility profiles.
 - `decision_inbox_http_server.py`: Streamable HTTP `/mcp` wrapper with mode selection, OAuth Owner password auth, optional/default OAuth state persistence by mode, bearer-token compatibility auth, Origin checks, Host allowlisting, and optional public base URL configuration.
 
 ## v1 Scope
@@ -249,7 +249,7 @@ Use `--oauth-state-file none` to disable Connected Agent OAuth persistence. To r
 the default Connected Agent auth files:
 
 ```bash
-python3 scripts/reset_decision_inbox_auth.py --full-agent-defaults
+python3 scripts/reset_decision_inbox_auth.py --connected-agent-defaults
 ```
 
 Risk coefficient for Connected Agent is `3/5-5/5`; Danger Auto is fixed `5/5`.

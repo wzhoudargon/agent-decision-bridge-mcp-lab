@@ -9,10 +9,10 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scripts import level3_consultation_prompt as prompt
+from scripts import connected_agent_consultation_prompt as prompt
 
 
-class Level3ConsultationPromptTests(unittest.TestCase):
+class ConnectedAgentConsultationPromptTests(unittest.TestCase):
     def test_default_prompt_uses_self_directed_project_inspection(self):
         text = prompt.render_prompt(
             question="Review whether the skill is ready.",
@@ -63,7 +63,7 @@ class Level3ConsultationPromptTests(unittest.TestCase):
 
         self.assertIn("Read exactly these 5 files", text)
         self.assertIn("PROJECT_CONTEXT.md", text)
-        self.assertIn("docs/phase-5-full-agent-live-verification.md", text)
+        self.assertIn("docs/architecture.md", text)
 
     def test_rejects_sensitive_file_requests(self):
         for path in (

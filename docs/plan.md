@@ -11,7 +11,7 @@ Current public modes:
   window through Apps/MCP connector tools. Read/search/list are automatic;
   write/edit/bash use one-action approval by default. Risk `3/5-5/5`.
 
-Older tiered names and separate read-only/full-access connector names are
+Older multi-mode names and separate read-only/full-access connector names are
 historical implementation names or compatibility aliases. Do not use them as
 primary product copy for new users.
 
@@ -275,7 +275,7 @@ Implemented:
 - `--oauth-state-file none` to disable OAuth persistence,
 - doctor fixed `5/5` risk when the hidden danger switch is active,
 - reset helper support for default OAuth state,
-- `scripts/full_agent_session.py` legacy session-window helper:
+- `scripts/connected_agent_session.py` legacy session-window helper:
   start the workspace connector, open public window, run preflight, keep the
   session alive during active Codex work, and close after idle timeout,
 - `scripts/prepare_consultation.py` Manual Package / legacy package helper:

@@ -11,7 +11,7 @@ Use Connected Agent to consult ChatGPT Web about whether this skill is good enou
 
 The skill should behave like a conversation product:
 
-1. understand the requested product tier,
+1. understand the requested product mode,
 2. prepare the right decision context,
 3. open only the minimum required connector window,
 4. ask the advisor through an actually available channel,
@@ -110,7 +110,7 @@ Connected Agent
   `grant_action_approval`, and retries the same tool call once with that
   `approval_id`.
 - `dangerously trust connected agent` is a hidden danger switch inside
-  Connected Agent, not an additional product tier.
+  Connected Agent, not an additional product mode.
 - The hidden switch starts only after the user types that exact phrase in
   ChatGPT Web.
 - When the hidden switch is active, safe project-local write/edit and safe

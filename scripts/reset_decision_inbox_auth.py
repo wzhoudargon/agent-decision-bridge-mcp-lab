@@ -11,12 +11,15 @@ DEFAULT_STATE_FILE = Path.home() / ".local/share/decision-inbox-mcp-lab/oauth-st
 DEFAULT_OWNER_TOKEN_FILE = (
     Path.home() / ".local/share/decision-inbox-mcp-lab/oauth-owner-token"
 )
-DEFAULT_FULL_AGENT_STATE_FILE = (
+DEFAULT_CONNECTED_AGENT_STATE_FILE = (
     Path.home() / ".local/share/agent-decision-bridge/oauth-state.json"
 )
-DEFAULT_FULL_AGENT_OWNER_TOKEN_FILE = (
+DEFAULT_CONNECTED_AGENT_OWNER_TOKEN_FILE = (
     Path.home() / ".local/share/agent-decision-bridge/oauth-owner-token"
 )
+# Backward-compatible constant names for older tests and local scripts.
+DEFAULT_FULL_AGENT_STATE_FILE = DEFAULT_CONNECTED_AGENT_STATE_FILE
+DEFAULT_FULL_AGENT_OWNER_TOKEN_FILE = DEFAULT_CONNECTED_AGENT_OWNER_TOKEN_FILE
 DEFAULT_TEMP_TOKEN_FILES = [
     Path("/tmp/decision-inbox-mcp-token"),
     Path("/tmp/decision-inbox-oauth-owner-token"),
@@ -50,9 +53,11 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Also delete legacy /tmp token files used by temporary connector runs.",
     )
     parser.add_argument(
+        "--connected-agent-defaults",
         "--full-agent-defaults",
+        dest="connected_agent_defaults",
         action="store_true",
-        help="Delete the default Full-Agent OAuth state and Owner password files.",
+        help="Delete the default Connected Agent OAuth state and Owner password files.",
     )
     return parser.parse_args(argv)
 
@@ -73,10 +78,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         ("oauth_state_file", args.oauth_state_file),
         ("oauth_owner_token_file", args.oauth_owner_token_file),
     ]
-    if args.full_agent_defaults:
+    if args.connected_agent_defaults:
         targets = [
-            ("full_agent_oauth_state_file", DEFAULT_FULL_AGENT_STATE_FILE),
-            ("full_agent_oauth_owner_token_file", DEFAULT_FULL_AGENT_OWNER_TOKEN_FILE),
+            ("connected_agent_oauth_state_file", DEFAULT_CONNECTED_AGENT_STATE_FILE),
+            (
+                "connected_agent_oauth_owner_token_file",
+                DEFAULT_CONNECTED_AGENT_OWNER_TOKEN_FILE,
+            ),
         ]
     if args.include_temp_files:
         targets.extend(

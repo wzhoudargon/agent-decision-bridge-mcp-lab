@@ -27,7 +27,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--mode",
         choices=sorted(VALID_MODES),
         default="auto-mcp",
-        help="Product tier requested by the user.",
+        help="Product mode requested by the user.",
     )
     parser.add_argument("--title", default=None)
     parser.add_argument("--task-id", default=None)
@@ -307,7 +307,7 @@ def risk_level(mode: str) -> str:
         return "1/5 local-only or 3/5 while public Auto MCP tunnel is active"
     if mode == "connected-agent":
         return "3/5-5/5 while Connected Agent session is open; 5/5 when Danger Auto is active"
-    return "5/5 while legacy Full-Agent session is open"
+    return "5/5 while legacy Connected Agent session is open"
 
 
 def disallowed_inputs(mode: str) -> List[str]:

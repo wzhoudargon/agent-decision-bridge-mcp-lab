@@ -13,7 +13,7 @@ from typing import List, Optional
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CONSULTATIONS_ROOT = ROOT / "decision-inbox" / "level3-consultations"
+DEFAULT_CONSULTATIONS_ROOT = ROOT / "decision-inbox" / "connected-agent-consultations"
 TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z$")
 SECRET_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
@@ -57,7 +57,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         captured = capture_advice(args)
     except Exception as exc:
-        print(f"level3_capture_advice: {exc}", file=sys.stderr)
+        print(f"connected_agent_capture_advice: {exc}", file=sys.stderr)
         return 1
     print(render_review(captured))
     return 0
@@ -80,8 +80,8 @@ def capture_advice(args: argparse.Namespace) -> dict:
             f"({secret_hit})"
         )
 
-    run_id = args.run_id or f"{timestamp.lower()}-{slugify(question, fallback='level3')}"
-    run_id = slugify(run_id, fallback="level3")
+    run_id = args.run_id or f"{timestamp.lower()}-{slugify(question, fallback='connected_agent')}"
+    run_id = slugify(run_id, fallback="connected_agent")
     run_dir = safe_child(args.consultations_root, run_id)
     advice_dir = run_dir / "advice"
     advice_dir.mkdir(parents=True, exist_ok=True)
@@ -92,7 +92,7 @@ def capture_advice(args: argparse.Namespace) -> dict:
         {
             "run_id": run_id,
             "mode": "connected-agent",
-            "tier": "Connected Agent",
+            "mode_label": "Connected Agent",
             "question": question,
             "status": "advice_captured",
             "created_at": created_at,

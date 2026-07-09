@@ -1,0 +1,7 @@
+[project]
+name = "agent-decision-bridge"
+version = "0.1.0"
+description = "Self-hosted MCP workflow that lets Codex use ChatGPT Web as an external advisor or connected project reviewer."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []

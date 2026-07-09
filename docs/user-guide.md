@@ -157,7 +157,7 @@ Hard-blocked or approval-gated categories include:
 - Git remote operations,
 - network, browser, desktop, or clipboard control.
 
-The hidden phrase `dangerously trust connected agent` is not a product tier. It
+The hidden phrase `dangerously trust connected agent` is not a product mode. It
 is a session-local high-risk switch inside Connected Agent. It remains fixed
 risk `5/5` and does not remove the server-side hard blocks.
 
@@ -182,10 +182,8 @@ Codex will classify the advice as Adopt / Ask / Reject.
 - `docs/security-public.md`: sanitized safety summary for web-advisor reads.
 - `docs/architecture.md`: implementation architecture.
 - `docs/decision-inbox-protocol.md`: legacy package/advice file protocol.
-- `docs/archive/`: historical verification records and superseded drafts.
 
-Historical archive documents may mention earlier tiered or deprecated connector
-names. Current user-facing language is:
+Current user-facing language is:
 
 - **Ask First**
 - **Connected Agent**

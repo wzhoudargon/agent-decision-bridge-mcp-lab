@@ -31,7 +31,7 @@ Connected Agent
   `grant_action_approval`, and retries the original tool call once with that
   `approval_id`.
 - `dangerously trust connected agent` is a hidden danger switch inside
-  Connected Agent, not an additional product tier.
+  Connected Agent, not an additional product mode.
 - The hidden switch can auto-run project-local write/edit and safe local bash,
   but it still cannot bypass server-side blocks.
 - High-risk credential paths are denied by the server: `.env*`, `.git`, SSH
@@ -50,7 +50,7 @@ Connected Agent
 
 ## Public Endpoint Policy
 
-Users bring their own public HTTPS endpoint for connector tiers. Supported
+Users bring their own public HTTPS endpoint for connector modes. Supported
 deployment choices include Tailscale Funnel, Cloudflare Tunnel, ngrok, Pinggy,
 or a user-managed HTTPS reverse proxy.
 

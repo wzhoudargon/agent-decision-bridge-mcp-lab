@@ -23,9 +23,9 @@ except ModuleNotFoundError:  # pragma: no cover - exercised by package imports.
 
 
 ROOT = Path(__file__).resolve().parents[1]
-FULL_AGENT_SESSION = ROOT / "scripts" / "full_agent_session.py"
-LEVEL3_PROMPT = ROOT / "scripts" / "level3_consultation_prompt.py"
-LEVEL3_CAPTURE = ROOT / "scripts" / "level3_capture_advice.py"
+CONNECTED_AGENT_SESSION = ROOT / "scripts" / "connected_agent_session.py"
+CONNECTED_AGENT_PROMPT = ROOT / "scripts" / "connected_agent_consultation_prompt.py"
+CONNECTED_AGENT_CAPTURE = ROOT / "scripts" / "connected_agent_capture_advice.py"
 DEFAULT_PUBLIC_WARMUP_SECONDS = 30.0
 DEFAULT_PREFLIGHT_TIMEOUT_SECONDS = 30.0
 DEFAULT_PREFLIGHT_ATTEMPTS = 6
@@ -248,11 +248,11 @@ def health_is_intermittent(result: subprocess.CompletedProcess[str]) -> bool:
 
 
 def close() -> int:
-    close_result = run_command([sys.executable, str(FULL_AGENT_SESSION), "close"])
+    close_result = run_command([sys.executable, str(CONNECTED_AGENT_SESSION), "close"])
     status_result = run_command(
         [
             sys.executable,
-            str(FULL_AGENT_SESSION),
+            str(CONNECTED_AGENT_SESSION),
             "status",
             "--check-public-health",
             "--health-attempts",
@@ -311,7 +311,7 @@ def capture_and_keep_open(args: argparse.Namespace) -> int:
 
 
 def refresh_idle_window() -> subprocess.CompletedProcess[str]:
-    touch_result = run_command([sys.executable, str(FULL_AGENT_SESSION), "touch"])
+    touch_result = run_command([sys.executable, str(CONNECTED_AGENT_SESSION), "touch"])
     print("Idle window refresh:")
     print(indent(touch_result.stdout.strip()))
     if touch_result.stderr.strip():
@@ -323,7 +323,7 @@ def refresh_idle_window() -> subprocess.CompletedProcess[str]:
 def build_open_command(args: argparse.Namespace) -> List[str]:
     return [
         sys.executable,
-        str(FULL_AGENT_SESSION),
+        str(CONNECTED_AGENT_SESSION),
         "open",
         "--mode",
         "connected-agent",
@@ -461,7 +461,7 @@ def handoff_next_action(advisor_channel: str) -> str:
 def build_health_command(args: argparse.Namespace) -> List[str]:
     return [
         sys.executable,
-        str(FULL_AGENT_SESSION),
+        str(CONNECTED_AGENT_SESSION),
         "status",
         "--check-public-health",
         "--preflight-timeout",
@@ -476,7 +476,7 @@ def build_health_command(args: argparse.Namespace) -> List[str]:
 def build_prompt_command(args: argparse.Namespace) -> List[str]:
     command = [
         sys.executable,
-        str(LEVEL3_PROMPT),
+        str(CONNECTED_AGENT_PROMPT),
         "--allowed-root",
         str(Path(args.allowed_root).expanduser()),
     ]
@@ -491,7 +491,7 @@ def build_prompt_command(args: argparse.Namespace) -> List[str]:
 def build_capture_command(args: argparse.Namespace) -> List[str]:
     command = [
         sys.executable,
-        str(LEVEL3_CAPTURE),
+        str(CONNECTED_AGENT_CAPTURE),
         "--question",
         args.question,
         "--advisor",

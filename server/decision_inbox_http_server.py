@@ -21,7 +21,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 try:
     from server.decision_inbox_server import handle_request as decision_inbox_handle_request
     from server.decision_inbox_store import DecisionInboxStore, default_tasks_root
-    from server.full_agent_server import (
+    from server.connected_agent_server import (
         FullAgentWorkspaceManager,
         PROFILE_CONNECTED_AGENT,
         PROFILE_FULL_AGENT,
@@ -31,7 +31,7 @@ try:
 except ModuleNotFoundError:
     from decision_inbox_server import handle_request as decision_inbox_handle_request  # type: ignore
     from decision_inbox_store import DecisionInboxStore, default_tasks_root  # type: ignore
-    from full_agent_server import (  # type: ignore
+    from connected_agent_server import (  # type: ignore
         FullAgentWorkspaceManager,
         PROFILE_CONNECTED_AGENT,
         PROFILE_FULL_AGENT,

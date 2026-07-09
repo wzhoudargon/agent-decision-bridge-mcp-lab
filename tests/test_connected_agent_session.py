@@ -12,7 +12,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scripts import full_agent_session as session
+from scripts import connected_agent_session as session
 
 
 class FullAgentSessionTests(unittest.TestCase):
@@ -22,7 +22,7 @@ class FullAgentSessionTests(unittest.TestCase):
             "mode": "connected-agent",
             "host": "127.0.0.1",
             "port": 8765,
-            "public_base_url": "https://full-agent.example.com",
+            "public_base_url": "https://connected-agent.example.com",
             "allowed_roots": [str(Path(tempdir) / "workspace")],
             "tailscale_bin": "tailscale",
             "socket": "/tmp/test-tailscale.sock",
@@ -60,7 +60,7 @@ class FullAgentSessionTests(unittest.TestCase):
         self.assertIn("--allowed-root", command)
         self.assertIn(str(workspace), command)
         self.assertIn("--public-base-url", command)
-        self.assertIn("https://full-agent.example.com", command)
+        self.assertIn("https://connected-agent.example.com", command)
 
     def test_build_server_command_keeps_legacy_full_agent_mode_when_explicit(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -95,7 +95,7 @@ class FullAgentSessionTests(unittest.TestCase):
 
         self.assertEqual(status, 1)
         output = "\n".join(call.args[0] for call in print_.call_args_list)
-        self.assertIn("Current state: full_agent_session_closed", output)
+        self.assertIn("Current state: connected_agent_session_closed", output)
         self.assertIn("Public health: skipped_session_not_open", output)
 
     def test_status_rechecks_session_after_public_health(self):
@@ -107,7 +107,7 @@ class FullAgentSessionTests(unittest.TestCase):
                 "last_activity": session.time.time(),
                 "idle_timeout_seconds": 300,
                 "local_mcp_url": "http://127.0.0.1:8765/mcp",
-                "public_base_url": "https://full-agent.example.com",
+                "public_base_url": "https://connected-agent.example.com",
             }
             session.save_state(args.state_file, state)
 
@@ -121,8 +121,8 @@ class FullAgentSessionTests(unittest.TestCase):
 
         self.assertEqual(status, 1)
         output = "\n".join(call.args[0] for call in print_.call_args_list)
-        self.assertIn("Current state: full_agent_session_open", output)
-        self.assertIn("Current state after health check: full_agent_session_closed_or_stale", output)
+        self.assertIn("Current state: connected_agent_session_open", output)
+        self.assertIn("Current state after health check: connected_agent_session_closed_or_stale", output)
 
     def test_public_warmup_waits_only_for_positive_values(self):
         with mock.patch.object(session.time, "sleep") as sleep:
@@ -198,7 +198,7 @@ class FullAgentSessionTests(unittest.TestCase):
             state_file = Path(tempdir) / "session" / "state.json"
             state = {
                 "server_pid": os.getpid(),
-                "public_base_url": "https://full-agent.example.com",
+                "public_base_url": "https://connected-agent.example.com",
                 "allowed_roots": [str(Path(tempdir) / "workspace")],
                 "last_activity": 1000,
                 "idle_timeout_seconds": 300,
@@ -207,7 +207,7 @@ class FullAgentSessionTests(unittest.TestCase):
             session.save_state(state_file, state)
             saved = json.loads(state_file.read_text(encoding="utf-8"))
 
-            self.assertEqual(saved["public_base_url"], "https://full-agent.example.com")
+            self.assertEqual(saved["public_base_url"], "https://connected-agent.example.com")
             self.assertEqual(state_file.stat().st_mode & 0o777, 0o600)
             self.assertEqual(state_file.parent.stat().st_mode & 0o777, 0o700)
             self.assertNotIn("oauth", state_file.read_text(encoding="utf-8").lower())
@@ -218,7 +218,7 @@ class FullAgentSessionTests(unittest.TestCase):
             args = self.make_args(tempdir)
             state = {
                 "server_pid": os.getpid(),
-                "public_base_url": "https://full-agent.example.com",
+                "public_base_url": "https://connected-agent.example.com",
                 "last_activity": 1000,
                 "idle_timeout_seconds": 300,
             }
@@ -237,7 +237,7 @@ class FullAgentSessionTests(unittest.TestCase):
             args = self.make_args(tempdir, idle_timeout_seconds=600)
             state = {
                 "server_pid": os.getpid(),
-                "public_base_url": "https://full-agent.example.com",
+                "public_base_url": "https://connected-agent.example.com",
                 "last_activity": 1000,
                 "idle_timeout_seconds": 300,
             }
@@ -259,7 +259,7 @@ class FullAgentSessionTests(unittest.TestCase):
                 "server_pid": os.getpid(),
                 "watchdog_pid": None,
                 "tailscale_socket": None,
-                "public_base_url": "https://full-agent.example.com",
+                "public_base_url": "https://connected-agent.example.com",
                 "last_activity": 1000,
                 "idle_timeout_seconds": 300,
             }
@@ -306,7 +306,7 @@ class FullAgentSessionTests(unittest.TestCase):
             args = self.make_args(tempdir, health_attempts=2, health_retry_seconds=0)
             state = {
                 "local_mcp_url": "http://127.0.0.1:8765/mcp",
-                "public_base_url": "https://full-agent.example.com",
+                "public_base_url": "https://connected-agent.example.com",
             }
             completed = subprocess.CompletedProcess(args=["preflight"], returncode=0, stdout="")
 
@@ -320,7 +320,7 @@ class FullAgentSessionTests(unittest.TestCase):
             args = self.make_args(tempdir, health_attempts=3, health_retry_seconds=0)
             state = {
                 "local_mcp_url": "http://127.0.0.1:8765/mcp",
-                "public_base_url": "https://full-agent.example.com",
+                "public_base_url": "https://connected-agent.example.com",
             }
             ok = subprocess.CompletedProcess(args=["preflight"], returncode=0, stdout="")
             failed = subprocess.CompletedProcess(

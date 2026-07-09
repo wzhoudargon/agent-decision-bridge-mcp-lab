@@ -22,7 +22,7 @@ from urllib.request import ProxyHandler, Request, build_opener
 ROOT = Path(__file__).resolve().parents[1]
 SERVER = ROOT / "server" / "decision_inbox_http_server.py"
 PREFLIGHT = ROOT / "scripts" / "decision_inbox_preflight.py"
-DEFAULT_STATE_DIR = Path.home() / ".local/share/agent-decision-bridge/full-agent-session"
+DEFAULT_STATE_DIR = Path.home() / ".local/share/agent-decision-bridge/connected-agent-session"
 DEFAULT_STATE_FILE = DEFAULT_STATE_DIR / "session.json"
 DEFAULT_SERVER_LOG = DEFAULT_STATE_DIR / "server.log"
 DEFAULT_WATCHDOG_LOG = DEFAULT_STATE_DIR / "watchdog.log"
@@ -151,17 +151,17 @@ def main(argv: Optional[List[str]] = None) -> int:
 def open_session(args: argparse.Namespace) -> int:
     risk_while_open = risk_coefficient_for_mode(args.mode)
     if not args.allowed_roots:
-        print("Current state: full_agent_session_failed")
+        print("Current state: connected_agent_session_failed")
         print(f"Risk coefficient: {risk_while_open} if opened")
         print("Config error: --allowed-root is required for Connected Agent.")
         return 2
     if not args.local_only and not args.public_base_url:
-        print("Current state: full_agent_session_failed")
+        print("Current state: connected_agent_session_failed")
         print(f"Risk coefficient: {risk_while_open} if opened")
         print("Config error: --public-base-url or DECISION_INBOX_PUBLIC_BASE_URL is required.")
         return 2
     if args.idle_timeout_seconds < 60:
-        print("Current state: full_agent_session_failed")
+        print("Current state: connected_agent_session_failed")
         print(f"Risk coefficient: {risk_while_open} if opened")
         print("Config error: --idle-timeout-seconds must be at least 60.")
         return 2
@@ -170,7 +170,7 @@ def open_session(args: argparse.Namespace) -> int:
     if existing and is_pid_running(existing.get("server_pid")):
         existing["idle_timeout_seconds"] = args.idle_timeout_seconds
         update_last_activity(args.state_file, existing)
-        print("Current state: full_agent_session_already_open")
+        print("Current state: connected_agent_session_already_open")
         print(f"Risk coefficient while open: {risk_coefficient_for_state(existing)}")
         print(f"Idle shutdown: {existing.get('idle_timeout_seconds')} seconds after last touch")
         print(f"Public MCP URL: {mcp_url(existing) or 'local-only'}")
@@ -192,7 +192,7 @@ def open_session(args: argparse.Namespace) -> int:
         )
     except OSError as exc:
         server_log.close()
-        print("Current state: full_agent_session_failed")
+        print("Current state: connected_agent_session_failed")
         print(f"Risk coefficient: {risk_while_open} if opened")
         print(f"Server start error: {exc}")
         return 1
@@ -232,13 +232,13 @@ def open_session(args: argparse.Namespace) -> int:
             state["watchdog_pid"] = start_watchdog(args)
             save_state(args.state_file, state)
     except Exception as exc:
-        print("Current state: full_agent_session_failed")
+        print("Current state: connected_agent_session_failed")
         print(f"Risk coefficient while cleanup is running: {risk_while_open}")
         print(f"Failure: {exc}")
         close_session(args)
         return 1
 
-    print("Current state: full_agent_session_open")
+    print("Current state: connected_agent_session_open")
     print(f"Mode: {args.mode}")
     print(product_readiness_summary(preflight_ran=not args.skip_preflight, mode=args.mode))
     print(f"Risk coefficient while open: {risk_while_open}")
@@ -246,23 +246,23 @@ def open_session(args: argparse.Namespace) -> int:
     print(f"Public MCP URL: {mcp_url(state) or 'local-only'}")
     print(f"State file: {args.state_file}")
     print(f"Server log: {args.server_log}")
-    print("Use `python3 scripts/full_agent_session.py touch` after each Connected Agent consult step.")
+    print("Use `python3 scripts/connected_agent_session.py touch` after each Connected Agent consult step.")
     return 0
 
 
 def touch_session(args: argparse.Namespace) -> int:
     state = load_state(args.state_file)
     if not state:
-        print("Current state: full_agent_session_closed")
+        print("Current state: connected_agent_session_closed")
         print("Risk coefficient now: 2/5 if persistent OAuth state remains, otherwise 1/5")
         return 1
     if not is_pid_running(state.get("server_pid")):
-        print("Current state: full_agent_session_stale")
+        print("Current state: connected_agent_session_stale")
         remove_state(args.state_file)
         print("Risk coefficient now: 2/5 if persistent OAuth state remains, otherwise 1/5")
         return 1
     update_last_activity(args.state_file, state)
-    print("Current state: full_agent_session_touched")
+    print("Current state: connected_agent_session_touched")
     print(f"Risk coefficient while open: {risk_coefficient_for_state(state)}")
     print(f"Public MCP URL: {mcp_url(state) or 'local-only'}")
     return 0
@@ -271,14 +271,14 @@ def touch_session(args: argparse.Namespace) -> int:
 def status_session(args: argparse.Namespace) -> int:
     state = load_state(args.state_file)
     if not state:
-        print("Current state: full_agent_session_closed")
+        print("Current state: connected_agent_session_closed")
         print("Risk coefficient now: 2/5 if persistent OAuth state remains, otherwise 1/5")
         if args.check_public_health:
             print("Public health: skipped_session_not_open")
         return 1
     alive = is_pid_running(state.get("server_pid"))
     idle = int(time.time() - float(state.get("last_activity", 0)))
-    print(f"Current state: {'full_agent_session_open' if alive else 'full_agent_session_stale'}")
+    print(f"Current state: {'connected_agent_session_open' if alive else 'connected_agent_session_stale'}")
     print(f"Risk coefficient while open: {risk_coefficient_for_state(state) if alive else 'not_open'}")
     print(f"Idle seconds: {idle}")
     print(f"Idle shutdown: {state.get('idle_timeout_seconds')} seconds after last touch")
@@ -290,7 +290,7 @@ def status_session(args: argparse.Namespace) -> int:
         print(public_health_report(args, state, alive=alive))
         final_alive = session_still_alive(args.state_file, state)
         if alive and not final_alive:
-            print("Current state after health check: full_agent_session_closed_or_stale")
+            print("Current state after health check: connected_agent_session_closed_or_stale")
             print("Risk coefficient now: 2/5 if persistent OAuth state remains, otherwise 1/5")
     return 0 if final_alive else 1
 
@@ -298,20 +298,20 @@ def status_session(args: argparse.Namespace) -> int:
 def sweep_session(args: argparse.Namespace) -> int:
     state = load_state(args.state_file)
     if not state:
-        print("Current state: full_agent_session_closed")
+        print("Current state: connected_agent_session_closed")
         return 0
     if not is_pid_running(state.get("server_pid")):
-        print("Current state: full_agent_session_stale")
+        print("Current state: connected_agent_session_stale")
         remove_state(args.state_file)
         return 0
     idle = time.time() - float(state.get("last_activity", 0))
     timeout = float(state.get("idle_timeout_seconds", args.idle_timeout_seconds))
     if idle < timeout:
-        print("Current state: full_agent_session_open")
+        print("Current state: connected_agent_session_open")
         print(f"Risk coefficient while open: {risk_coefficient_for_state(state)}")
         print(f"Idle seconds: {int(idle)}")
         return 0
-    print("Current state: full_agent_session_idle_expired")
+    print("Current state: connected_agent_session_idle_expired")
     print(f"Risk coefficient while closing: {risk_coefficient_for_state(state)}")
     return close_session(args, from_watchdog=True)
 
@@ -327,7 +327,7 @@ def watch_session(args: argparse.Namespace) -> int:
         idle = time.time() - float(state.get("last_activity", 0))
         timeout = float(state.get("idle_timeout_seconds", args.idle_timeout_seconds))
         if idle >= timeout:
-            print("Current state: full_agent_session_idle_expired")
+            print("Current state: connected_agent_session_idle_expired")
             print(f"Risk coefficient while closing: {risk_coefficient_for_state(state)}")
             return close_session(args, from_watchdog=True)
         time.sleep(max(1.0, min(args.poll_seconds, timeout - idle)))
@@ -345,7 +345,7 @@ def session_still_alive(state_file: Path, state: Dict[str, Any]) -> bool:
 def close_session(args: argparse.Namespace, from_watchdog: bool = False) -> int:
     state = load_state(args.state_file)
     if not state:
-        print("Current state: full_agent_session_closed")
+        print("Current state: connected_agent_session_closed")
         print("Risk coefficient now: 2/5 if persistent OAuth state remains, otherwise 1/5")
         return 0
 
@@ -356,7 +356,7 @@ def close_session(args: argparse.Namespace, from_watchdog: bool = False) -> int:
     if not from_watchdog:
         terminate_pid(state.get("watchdog_pid"))
     remove_state(args.state_file)
-    print("Current state: full_agent_session_closed")
+    print("Current state: connected_agent_session_closed")
     print("Risk coefficient now: 2/5 if persistent OAuth state remains, otherwise 1/5")
     return result
 
@@ -593,7 +593,7 @@ def wait_for_local_server(local_mcp_url: str, timeout: float) -> None:
         except Exception as exc:
             last_error = str(exc)
             time.sleep(0.2)
-    raise RuntimeError(f"local Full-Agent endpoint did not become ready: {last_error}")
+    raise RuntimeError(f"local Connected Agent endpoint did not become ready: {last_error}")
 
 
 def probe_unauthenticated(url: str) -> None:
@@ -624,7 +624,7 @@ def load_state(path: Path) -> Dict[str, Any]:
     except FileNotFoundError:
         return {}
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Invalid Full-Agent session state file: {exc}") from exc
+        raise RuntimeError(f"Invalid Connected Agent session state file: {exc}") from exc
 
 
 def save_state(path: Path, state: Dict[str, Any]) -> None:

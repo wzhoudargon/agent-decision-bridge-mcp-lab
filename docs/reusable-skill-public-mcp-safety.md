@@ -193,7 +193,7 @@ Connector profile rule:
   approves the exact action in chat, then ChatGPT calls `grant_action_approval`
   and retries the same action once.
 - `dangerously trust connected agent` is not a separate connector or product
-  tier. It is a session-only hidden danger switch inside Connected Agent,
+  mode. It is a session-only hidden danger switch inside Connected Agent,
   enabled only after the user types that exact phrase, and is always risk
   `5/5`.
 - Legacy `read-only-project` and `full-agent` connector scopes may remain only

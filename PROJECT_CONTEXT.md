@@ -99,8 +99,8 @@ Instead, keep this as a separate lab project:
 2. Validate local restricted MCP access on a synthetic test workspace. Local complete; external connector deferred because the narrower Phase 2 Decision Inbox connector test succeeded first.
 3. Build Decision Inbox MCP v1. Local and ChatGPT Web external connector verification complete.
 4. Run an end-to-end decision package loop. Complete with a synthetic package-only advisor round.
-5. Keep Manual Package as the safest first tier.
-6. Connected Agent is implemented as the product second tier with approval
+5. Keep Ask First as the safest mode.
+6. Connected Agent is implemented as the project-aware mode with approval
    gates and a session-only hidden danger switch.
 7. Legacy Read-Only Project Advisor and Full-Agent remain only as compatibility
    aliases.
@@ -115,13 +115,11 @@ Instead, keep this as a separate lab project:
 - `docs/conversation-product-mode.md` defines the conversation-first product behavior and the required distinction between inbound Connected Agent connector access and outbound advisor invocation.
 - `docs/connected-agent-user-flow.md` defines the current non-technical
   Connected Agent user flow.
-- `docs/archive/` keeps historical verification notes and superseded product
-  drafts. These are not current user-facing docs.
 - `decision-inbox/tasks/_template/` is the reusable task skeleton.
 - `decision-inbox/tasks/phase-1-package-only-mcp-review/` is the first package-only advisor review task.
 - `test-workspace/synthetic-project/` contains only synthetic files for the first access test.
 - `server/decision_inbox_server.py` exposes package/advice/status Auto MCP tools over stdio.
-- `server/full_agent_server.py` exposes Connected Agent workspace tools,
+- `server/connected_agent_server.py` exposes Connected Agent workspace tools,
   approval gates, the hidden danger switch, and deprecated workspace connector
   aliases.
 - `server/decision_inbox_http_server.py` exposes legacy Auto MCP by default,

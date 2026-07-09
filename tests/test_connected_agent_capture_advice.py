@@ -8,10 +8,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scripts import level3_capture_advice as capture
+from scripts import connected_agent_capture_advice as capture
 
 
-class Level3CaptureAdviceTests(unittest.TestCase):
+class ConnectedAgentCaptureAdviceTests(unittest.TestCase):
     def make_args(self, tempdir: str, **overrides):
         defaults = {
             "question": "Should Connected Agent be considered ready?",
@@ -20,7 +20,7 @@ class Level3CaptureAdviceTests(unittest.TestCase):
             "run_id": "connected-agent-product-review",
             "timestamp": "2026-06-24T08-10-00Z",
             "advice_file": None,
-            "consultations_root": Path(tempdir) / "level3-consultations",
+            "consultations_root": Path(tempdir) / "connected-agent-consultations",
         }
         defaults.update(overrides)
         return argparse.Namespace(**defaults)

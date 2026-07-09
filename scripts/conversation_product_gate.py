@@ -33,7 +33,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--session-state",
         default="not_open",
-        help="Observed Full-Agent session state for reporting only.",
+        help="Observed Connected Agent session state for reporting only.",
     )
     return parser.parse_args(argv)
 

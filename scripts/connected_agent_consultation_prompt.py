@@ -18,7 +18,7 @@ DEFAULT_SAFE_FILES = [
 DEEP_REVIEW_FILES = [
     *DEFAULT_SAFE_FILES,
     "PROJECT_CONTEXT.md",
-    "docs/phase-5-full-agent-live-verification.md",
+    "docs/architecture.md",
 ]
 HARD_DENY_PARTS = {
     ".env",
@@ -109,7 +109,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             advisor_name=args.advisor_name,
         )
     except ValueError as exc:
-        print(f"level3_consultation_prompt: {exc}", file=sys.stderr)
+        print(f"connected_agent_consultation_prompt: {exc}", file=sys.stderr)
         return 1
     print("Current state: connected_agent_prompt_ready")
     print("Risk if opened: 3/5-5/5")

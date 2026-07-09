@@ -32,11 +32,11 @@ The hidden danger switch intentionally borrows a more automatic local execution 
 must be enabled inside Connected Agent by the exact phrase
 `dangerously trust connected agent`, is session-only, and is always risk `5/5`.
 
-## Product Tiers And Connectors
+## Product Modes And Connectors
 
 Use separate ChatGPT account-side connectors:
 
-| Product tier | CLI mode | OAuth scope | ChatGPT connector |
+| Product mode | CLI mode | OAuth scope | ChatGPT connector |
 |---|---|---|---|
 | Ask First | `manual` / package helper `ask-first` | none | none |
 | Connected Agent | `connected-agent` | `connected-agent` | one workspace connector |
@@ -90,7 +90,7 @@ Recommended defaults:
   domain.
 - **Temporary troubleshooting**: Cloudflare Quick Tunnel, ngrok, or Pinggy.
 
-By product tier:
+By product mode:
 
 - Ask First needs no tunnel.
 - Connected Agent needs a tunnel when ChatGPT Web directly reads, writes,
@@ -348,7 +348,7 @@ request_workspace_access
 grant_workspace_access
 ```
 
-Do not generate a Decision Inbox package for this tier. ChatGPT reads the
+Do not generate a Decision Inbox package for this mode. ChatGPT reads the
 allowed project content through the connector. High-risk credential paths such
 as `.env*`, `.git`, SSH and cloud credential directories, private-key material,
 and known token/OAuth state files are blocked. Other task-relevant project
@@ -461,7 +461,7 @@ through the wrapper so the timer is refreshed.
 Low-level session window:
 
 ```bash
-python3 scripts/full_agent_session.py open \
+python3 scripts/connected_agent_session.py open \
   --public-base-url "https://your-stable-host.example.com" \
   --allowed-root "$HOME/work/my-project" \
   --idle-timeout-seconds 1200
@@ -470,21 +470,21 @@ python3 scripts/full_agent_session.py open \
 During an active Codex task, call `touch` after each Connected Agent consult step:
 
 ```bash
-python3 scripts/full_agent_session.py touch
+python3 scripts/connected_agent_session.py touch
 ```
 
 Inspect or close the window:
 
 ```bash
-python3 scripts/full_agent_session.py status
-python3 scripts/full_agent_session.py close
+python3 scripts/connected_agent_session.py status
+python3 scripts/connected_agent_session.py close
 ```
 
 When the session is open, classify public endpoint stability with repeated
 read-only preflight probes:
 
 ```bash
-python3 scripts/full_agent_session.py status \
+python3 scripts/connected_agent_session.py status \
   --check-public-health \
   --health-attempts 3
 ```
@@ -586,7 +586,7 @@ python3 scripts/decision_inbox_doctor.py --mode connected-agent
 Revoke default Connected Agent auth files:
 
 ```bash
-python3 scripts/reset_decision_inbox_auth.py --full-agent-defaults
+python3 scripts/reset_decision_inbox_auth.py --connected-agent-defaults
 ```
 
 Risk coefficient: `3/5-5/5`; the hidden danger switch is fixed `5/5`. Bash runs with the

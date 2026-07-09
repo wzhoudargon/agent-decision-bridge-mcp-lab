@@ -4,7 +4,7 @@ import json
 import time
 from pathlib import Path
 
-from server import full_agent_server as srv
+from server import connected_agent_server as srv
 
 
 class FullAgentWorkspaceManagerTests(unittest.TestCase):
