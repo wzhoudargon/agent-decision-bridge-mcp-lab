@@ -126,6 +126,12 @@ and do not manually reconstruct the account-specific `plugin://...` reference;
 the ChatGPT UI should create the connector chip/reference. Continue only after
 the connector tools are visible in that conversation.
 
+The current Connected Agent must expose its complete tool contract before a
+task begins. If the attached conversation is missing tools, do not continue in
+degraded mode: reopen the local session, start a fresh conversation, attach the
+connector again through `@`, and verify the contract. If it remains incomplete,
+update/re-publish or reinstall the connector before retrying.
+
 GPT Pro is best used through Ask First when you want manual deep reasoning. For
 Connected Agent, use a ChatGPT Web mode that actually shows the connector tools.
 If the connector tools are not visible, Codex should stop at

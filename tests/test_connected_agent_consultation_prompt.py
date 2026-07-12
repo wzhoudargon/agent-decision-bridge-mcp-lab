@@ -24,7 +24,11 @@ class ConnectedAgentConsultationPromptTests(unittest.TestCase):
         self.assertIn("exact display name", text)
         self.assertIn("Writing the connector name as plain text does not attach its tools", text)
         self.assertIn("do not hand-type or reconstruct a plugin:// identifier", text)
-        self.assertIn("Confirm that the selected `Agent Decision Bridge Connected Agent` connector reference is present", text)
+        self.assertIn("confirm that the selected `Agent Decision Bridge Connected Agent` connector reference is present", text)
+        self.assertIn("complete current tool contract", text)
+        self.assertIn("connector_contract_incomplete", text)
+        for tool_name in prompt.CURRENT_CONNECTED_AGENT_TOOLS:
+            self.assertIn(tool_name, text)
         self.assertIn("deterministic workspace-open rule", text)
         self.assertIn("If open_default_workspace is visible", text)
         self.assertIn('call it exactly once with path "default"', text)

@@ -14,6 +14,9 @@
   guessed or hard-coded.
 - Updated the Connected Agent prompt generator and regression tests to include
   the exact-name `@` attachment gate.
+- Added a mandatory complete-tool-contract gate before project inspection.
+  Missing tools now trigger session reopen, fresh-chat reattachment, and then
+  `connector_contract_incomplete` instead of silent degraded execution.
 - Added `structuredContent.content` to whole-file `read` results so ChatGPT
   connector surfaces that prioritize structured output can see file contents.
 

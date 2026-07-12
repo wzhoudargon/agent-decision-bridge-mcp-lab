@@ -35,6 +35,13 @@ First instead.
    name does not attach tools. Codex confirms that the connector reference and
    tools are visible before continuing. If they are not visible, Codex should
    stop at `waiting_for_advisor_channel` or fall back to Ask First.
+   For the current Connected Agent release, Codex must verify the complete tool
+   contract before project inspection. If any tool is missing, it reopens the
+   local short-lived session, starts a fresh web conversation, reattaches the
+   exact connector through `@`, and checks again. If the fresh conversation is
+   still incomplete, it stops with `connector_contract_incomplete` and asks the
+   user to update/re-publish or reinstall the connector. It must not silently
+   continue with a partial schema.
 7. Gives ChatGPT Web a compact prompt that opens the workspace deterministically:
    call `open_default_workspace` when visible; otherwise call
    `open_workspace` exactly once with path `"default"`. The compatibility alias

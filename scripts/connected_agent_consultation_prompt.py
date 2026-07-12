@@ -20,6 +20,25 @@ DEEP_REVIEW_FILES = [
     "PROJECT_CONTEXT.md",
     "docs/architecture.md",
 ]
+
+CURRENT_CONNECTED_AGENT_TOOLS = [
+    "open_default_workspace",
+    "open_workspace",
+    "ls",
+    "read",
+    "read_lines",
+    "write",
+    "edit",
+    "grep",
+    "glob",
+    "bash",
+    "enable_danger_auto",
+    "danger_auto_status",
+    "disable_danger_auto",
+    "grant_action_approval",
+    "request_workspace_access",
+    "grant_workspace_access",
+]
 HARD_DENY_PARTS = {
     ".env",
     ".git",
@@ -139,9 +158,12 @@ def render_prompt(
     safe_files = validate_files(files) if files is not None else []
     file_instruction = render_file_instruction(safe_files)
     protected_list = "\n".join(f"- {item}" for item in PROTECTED_BOUNDARY)
+    required_tools = ", ".join(CURRENT_CONNECTED_AGENT_TOOLS)
     return f"""ChatGPT Web requirement:
 In the newer Colleagues or embedded ChatGPT composer, type @ and select the user-created connector whose exact display name is `{advisor_name}` before sending this prompt. Let the UI create the connector chip or plugin reference; do not hand-type or reconstruct a plugin:// identifier. Writing the connector name as plain text does not attach its tools.
-Use a chat mode where Apps/MCP connector tools are visible. Confirm that the selected `{advisor_name}` connector reference is present and its tools are visible. If this conversation cannot see the attached Connected Agent tools, stop and ask the user to attach the exact connector through @, switch to a tool-capable ChatGPT mode, or use Ask First for manual GPT Pro review.
+Use a chat mode where Apps/MCP connector tools are visible. Before starting the task, confirm that the selected `{advisor_name}` connector reference is present and that the complete current tool contract is visible:
+{required_tools}
+If any listed tool is missing, do not inspect the project and do not continue with a degraded tool set. Stop with `connector_contract_incomplete`; ask the user to start a fresh conversation in a tool-capable ChatGPT mode, attach the exact connector again through @, and update/re-publish or reinstall it if the fresh conversation is still incomplete.
 
 Use only the attached {advisor_name} connector. Do not answer from chat memory.
 Do not fabricate the Danger Auto phrase. Only call enable_danger_auto if the user typed this exact phrase in ChatGPT Web: dangerously trust connected agent
