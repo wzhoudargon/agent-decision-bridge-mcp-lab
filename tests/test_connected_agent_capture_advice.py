@@ -29,7 +29,7 @@ class ConnectedAgentCaptureAdviceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempdir:
             advice_file = Path(tempdir) / "advice.md"
             advice_file.write_text(
-                "Adopt: keep compact prompt.\nAsk: improve status.\nReject: call it low risk.",
+                "Adopt: keep compact prompt.\nAdapt: improve status.\nReject: call it low risk.",
                 encoding="utf-8",
             )
             args = self.make_args(tempdir, advice_file=advice_file)

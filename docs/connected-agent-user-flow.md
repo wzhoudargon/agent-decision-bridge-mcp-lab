@@ -29,7 +29,12 @@ First instead.
 6. Tells the user to use a ChatGPT Web chat mode where Apps/MCP connector tools
    are visible. If the connector is not visible, Codex should stop at
    `waiting_for_advisor_channel` or fall back to Ask First.
-7. Gives ChatGPT Web a compact prompt that inspects context first, lets the
+7. Gives ChatGPT Web a compact prompt that opens the workspace deterministically:
+   call `open_default_workspace` when visible; otherwise call
+   `open_workspace` exactly once with path `"default"`. The compatibility alias
+   is mandatory for a stale schema, needs no absolute path or extra user
+   confirmation, and must not be misreported as a missing server feature.
+   The prompt then inspects context first, lets the
    advisor choose task-relevant files under the allowed root, and hard-blocks
    high-risk credential paths at the server.
 8. Allows write/edit/bash through one-action approval by default: the tool
@@ -38,7 +43,7 @@ First instead.
    starts only if the user types `dangerously trust connected agent`, and
    server policy still blocks unsafe commands and sensitive paths.
 9. Imports the returned advice.
-10. Classifies recommendations as `Adopt`, `Ask`, or `Reject`.
+10. Classifies recommendations as `Adopt`, `Adapt`, `Reject`, or `Need info`.
 11. Keeps the session open after capture and lets the idle watchdog close it 20
    minutes after the last Connected Agent use.
 
@@ -140,10 +145,13 @@ Advisor rounds used: 1
 Adopt:
 - ...
 
-Ask:
+Adapt:
 - ...
 
 Reject:
+- ...
+
+Need info:
 - ...
 
 Next local action:

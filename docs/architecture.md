@@ -252,7 +252,7 @@ Codex task
   -> Tailscale Funnel public URL
   -> ChatGPT Connected Agent connector
   -> advisor result
-  -> Codex import/classification: Adopt / Ask / Reject
+  -> Codex import/classification: Adopt / Adapt / Reject / Need info
   -> scripts/connected_agent_session.py touch after active steps
   -> watchdog closes server and Funnel after idle timeout
 ```

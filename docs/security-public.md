@@ -94,7 +94,7 @@ Codex should then:
 3. open the Connected Agent window only for the active task,
 4. ask ChatGPT Web through the visible connector,
 5. import the answer,
-6. classify recommendations as `Adopt`, `Ask`, or `Reject`,
+6. classify recommendations as `Adopt`, `Adapt`, `Reject`, or `Need info`,
 7. close the public window or let idle shutdown close it.
 
 If the connector or advisor channel is unavailable, Codex must say so plainly

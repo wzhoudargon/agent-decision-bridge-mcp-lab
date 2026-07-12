@@ -508,7 +508,7 @@ Normal user-facing flow:
 User: Use Connected Agent to consult ChatGPT about <question>.
 Codex: prepares the consultation task, opens/touches the Connected Agent session,
 checks whether an advisor channel is available, imports the advisor response,
-and reports Adopt / Ask / Reject back to the user.
+and reports Adopt / Adapt / Reject / Need info back to the user.
 ```
 
 The user should not need to paste backend commands during normal product use.

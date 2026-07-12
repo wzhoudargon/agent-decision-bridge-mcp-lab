@@ -16,7 +16,8 @@ The skill should behave like a conversation product:
 3. open only the minimum required connector window,
 4. ask the advisor through an actually available channel,
 5. import the result,
-6. classify material recommendations as `Adopt`, `Ask`, or `Reject`,
+6. classify material recommendations as `Adopt`, `Adapt`, `Reject`, or
+   `Need info`,
 7. close public windows after the task or idle timeout.
 
 It must not pretend that an advisor was called when the advisor channel is not
@@ -80,9 +81,15 @@ If no advisor channel is available, Codex must say so and stop at
 Ask First
 
 - Create or summarize a self-contained package.
+- Explicit first-tier wording such as `第一档`, `调用第一档`, or `Ask First`
+  maps here. A request to consult GPT Pro without project inspection or
+  connector access also defaults here.
 - No public connector.
 - Risk `1/5`.
 - User manually sends package and returns advice.
+- `package_ready`, `manual_package_available`, and
+  `consultation_package_ready` mean the package is ready, not that the advisor
+  has already reviewed it.
 
 Connected Agent
 
@@ -93,12 +100,16 @@ Connected Agent
   `read_lines`, `write`, `edit`, `grep`, `glob`, `bash`, `enable_danger_auto`, `danger_auto_status`,
   `disable_danger_auto`, `grant_action_approval`, `request_workspace_access`, and
   `grant_workspace_access`.
-- When exactly one allowed root is configured, ChatGPT should call
-  `open_default_workspace` first so it does not need to pass a local absolute
-  path through the web advisor.
-- If ChatGPT still exposes a stale connector schema without
-  `open_default_workspace`, it should call `open_workspace` with path exactly
-  `"default"` as the no-local-path compatibility alias.
+- Workspace opening is deterministic, not a user choice. When
+  `open_default_workspace` is visible, ChatGPT calls it with no arguments. If
+  the visible connector schema lacks that tool but exposes `open_workspace`,
+  ChatGPT must call `open_workspace` exactly once with path `"default"`.
+- The `"default"` alias is the required legacy-schema compatibility path. Its
+  use needs neither a local absolute path nor an extra user confirmation.
+  Absence of `open_default_workspace` alone is not evidence that the server
+  needs modification. Report failure only after the applicable visible entry
+  point returns an error, and verify that the returned root matches the
+  currently authorized workspace.
 - High-risk credential paths are blocked by the server; other task-relevant
   project files may be inspected.
 - Whole-file `read` is for task-relevant UTF-8 files up to 1 MB; larger source
@@ -181,7 +192,7 @@ Use package preparation only for Ask First or legacy package-only Auto MCP:
 ```bash
 python3 scripts/prepare_consultation.py \
   --mode ask-first \
-  --advisor-channel unknown \
+  --advisor-channel manual \
   "Review whether this skill is ready and what to optimize next."
 ```
 
@@ -278,7 +289,7 @@ tools are visible, use only the Connected Agent connector, avoid Python/browser
 file checks, inspect before acting, use one-action approval for write/edit/bash,
 choose task-relevant project files under the allowed root, avoid high-risk
 credential paths, and report
-`Adopt`, `Ask`, and `Reject` recommendations. Use `--deep` or explicit `--file`
+`Adopt`, `Adapt`, `Reject`, and `Need info` recommendations. Use `--deep` or explicit `--file`
 only for a targeted fixed-file round. The `--clipboard` flag copies the prompt
 locally so browser automation or the user can paste it into ChatGPT without
 manually selecting terminal output.
@@ -294,12 +305,12 @@ For ordinary users, the expected handoff text is:
 Open ChatGPT Web with a tool-capable chat mode selected and the Connected Agent connector attached.
 Paste and send the copied prompt.
 When ChatGPT finishes, paste the answer back into Codex.
-Codex will classify the advice as Adopt / Ask / Reject.
+Codex will classify the advice as Adopt / Adapt / Reject / Need info.
 ```
 
 Codex should then capture the pasted answer with
 `scripts/connected_agent_flow.py capture` before doing the local
-Adopt / Ask / Reject review.
+Adopt / Adapt / Reject / Need info review.
 
 ## Failure Wording
 

@@ -91,7 +91,8 @@ The normal flow is:
 3. ChatGPT Web uses the connector to inspect task-relevant files.
 4. ChatGPT Web returns advice.
 5. Codex captures the advice as data.
-6. Codex classifies recommendations as `Adopt`, `Ask`, or `Reject`.
+6. Codex classifies recommendations as `Adopt`, `Adapt`, `Reject`, or
+   `Need info`.
 7. The session is closed manually or by idle timeout.
 
 Connected Agent does not automatically give Codex an outbound GPT Pro call. If

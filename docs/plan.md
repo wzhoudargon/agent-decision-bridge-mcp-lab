@@ -314,6 +314,6 @@ Use the current English documentation as the canonical product description:
 short ChatGPT Web Connected Agent consultations with connector tools visible and
 the compact prompt helper. Verify that the advisor can choose task-relevant
 files, avoid high-risk credential paths, return advice, and let Codex classify
-recommendations as `Adopt / Ask / Reject`. Keep the failure path: when no
+recommendations as `Adopt / Adapt / Reject / Need info`. Keep the failure path: when no
 advisor channel is visible, the product reports `waiting_for_advisor_channel`
 instead of creating a manual package and implying that GPT Pro reviewed it.

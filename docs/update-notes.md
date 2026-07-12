@@ -1,5 +1,37 @@
 # Update Notes
 
+## 2026-07-12: Phase 1 Contract Consistency
+
+This update aligns the runtime skill, Ask First helper, current product docs,
+and regression coverage without starting the larger Phase 2 runbook split.
+
+### What Changed
+
+- Standardized recommendation review on
+  `Adopt / Adapt / Reject / Need info`.
+- Added explicit first-tier aliases and clarified that package readiness is not
+  proof that GPT Pro or another advisor was consulted.
+- Changed `prepare_consultation.py` to default to Ask First, limited its CLI to
+  package-producing modes, added automatic Chinese/English templates, and made
+  the manual handoff require the complete package instead of a local task id.
+- Replaced stale runtime helper names with the canonical Connected Agent
+  helpers and scoped the public MCP guardrail explicitly to Decision Inbox.
+- Added eight routing golden cases plus product-contract consistency tests.
+- Refreshed the skill UI metadata to describe both Ask First and Connected
+  Agent.
+- Made workspace opening deterministic across current and stale connector
+  schemas: call `open_default_workspace` when visible; otherwise call
+  `open_workspace("default")` exactly once. The compatibility path no longer
+  permits asking for an absolute path or incorrectly proposing a server change.
+- Added prompt-level regression coverage for the deterministic fallback,
+  authorized-root verification, and no-absolute-path boundary.
+
+### Validation
+
+- Runtime skill folder passes `quick_validate.py`.
+- Full Python suite: `178 tests OK`.
+- Phase 2 progressive-disclosure work remains intentionally deferred.
+
 ## 2026-07-09: Connected Agent Documentation Refresh
 
 This update makes the current Agent Decision Bridge product language consistent

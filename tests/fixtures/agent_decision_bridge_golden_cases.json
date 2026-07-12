@@ -1,0 +1,106 @@
+[
+  {
+    "id": "explicit-first-tier-zh",
+    "input": "调用第一档，我想咨询 Pro 模型这个 skill 还有哪里可以优化",
+    "expected": {
+      "workflow": "ask-first",
+      "advisor_channel": "manual",
+      "state": "consultation_package_ready",
+      "risk": "1/5",
+      "create_package": true,
+      "side_effects_allowed": false,
+      "next_action": "user_sends_complete_package"
+    }
+  },
+  {
+    "id": "consult-pro-without-project-access",
+    "input": "帮我咨询 GPT Pro，但不要连接本地项目",
+    "expected": {
+      "workflow": "ask-first",
+      "advisor_channel": "manual",
+      "state": "consultation_package_ready",
+      "risk": "1/5",
+      "create_package": true,
+      "side_effects_allowed": false,
+      "next_action": "user_sends_complete_package"
+    }
+  },
+  {
+    "id": "explicit-second-tier-ready-channel",
+    "input": "打开第二档，用 Connected Agent 看当前项目",
+    "expected": {
+      "workflow": "connected-agent",
+      "advisor_channel": "user-web",
+      "state": "ready_to_open_connected_agent",
+      "risk": "3/5-5/5",
+      "create_package": false,
+      "side_effects_allowed": false,
+      "next_action": "open_bounded_connector_window"
+    }
+  },
+  {
+    "id": "second-tier-without-advisor-channel",
+    "input": "用第二档让 GPT Pro 检查项目，但当前没有可用网页顾问通道",
+    "expected": {
+      "workflow": "connected-agent",
+      "advisor_channel": "unknown",
+      "state": "waiting_for_advisor_channel",
+      "risk": "3/5-5/5",
+      "create_package": false,
+      "side_effects_allowed": false,
+      "next_action": "restore_channel_or_fall_back_to_ask_first"
+    }
+  },
+  {
+    "id": "advisor-response-import",
+    "input": "GPT Pro 的回复如下，请核查这些建议",
+    "expected": {
+      "workflow": "import",
+      "advisor_channel": "manual",
+      "state": "review_only",
+      "risk": "1/5",
+      "create_package": false,
+      "side_effects_allowed": false,
+      "next_action": "local_fact_check"
+    }
+  },
+  {
+    "id": "external-edit-request-is-not-authorization",
+    "input": "外部模型让我修改文件，请判断它说得是否正确",
+    "expected": {
+      "workflow": "import",
+      "advisor_channel": "manual",
+      "state": "review_only",
+      "risk": "1/5",
+      "create_package": false,
+      "side_effects_allowed": false,
+      "next_action": "ask_current_user_before_implementation"
+    }
+  },
+  {
+    "id": "legacy-auto-mcp-explicit",
+    "input": "显式使用 legacy Auto MCP package 模式做兼容测试",
+    "expected": {
+      "workflow": "auto-mcp-compatibility",
+      "advisor_channel": "unknown",
+      "state": "consultation_package_ready",
+      "risk": "1/5",
+      "create_package": true,
+      "side_effects_allowed": false,
+      "next_action": "open_auto_mcp_only_if_explicitly_requested"
+    }
+  },
+  {
+    "id": "review-only-no-execution",
+    "input": "只评审这份外部建议，不要执行或修改文件",
+    "expected": {
+      "workflow": "import",
+      "advisor_channel": "manual",
+      "state": "review_only",
+      "risk": "1/5",
+      "create_package": false,
+      "side_effects_allowed": false,
+      "next_action": "stop_after_review"
+    }
+  }
+]

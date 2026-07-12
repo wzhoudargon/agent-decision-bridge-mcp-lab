@@ -178,7 +178,7 @@ def status(
             f"Next step: {next_step}",
         ]
     )
-    if current_state == "waiting_for_advisor_channel":
+    if current_state in {"waiting_for_advisor_channel", "manual_package_available"}:
         message = "\n".join([message, NOT_CONSULTED_NOTICE])
     return {"message": message, "exit_code": exit_code}
 

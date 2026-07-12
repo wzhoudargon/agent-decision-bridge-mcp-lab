@@ -60,6 +60,28 @@ Use Agent Decision Bridge Ask First to prepare a review package for this questio
 Should this project architecture be simplified before launch?
 ```
 
+Explicit first-tier wording such as `第一档`, `调用第一档`, or `Ask First`
+selects this mode. A prepared package means only that the package is ready; it
+does not mean GPT Pro or another advisor has already reviewed it.
+
+## Canonical Vocabulary
+
+Keep these domains separate:
+
+- Product mode: `ask-first` or `connected-agent`.
+- Advisor channel: `manual`, `user-web`, `browser-automation`, `direct-tool`,
+  or `unknown`.
+- Decision Inbox task status: `draft`, `package_ready`, `advice_submitted`,
+  `needs_local_fact_check`, `review_complete`, or `closed`.
+- Import decision: `Adopt`, `Adapt`, `Reject`, or `Need info`.
+- Import execution gate: `review_only`, then `ready_for_user_authorization`,
+  and only after current-user approval `ready_to_implement`.
+- Connector/action status uses its own values, including
+  `waiting_for_advisor_channel` and `approval_required`.
+
+Do not treat `package_ready`, `manual_package_available`, or
+`consultation_package_ready` as proof that an advisor was consulted.
+
 ## Mode 2: Connected Agent
 
 Connected Agent is for project-aware ChatGPT Web review.
@@ -110,7 +132,8 @@ If the connector tools are not visible, Codex should stop at
 5. ChatGPT Web inspects task-relevant project context through the connector.
 6. ChatGPT Web returns advice.
 7. Codex captures the advice as review data.
-8. Codex classifies recommendations as `Adopt`, `Ask`, or `Reject`.
+8. Codex classifies recommendations as `Adopt`, `Adapt`, `Reject`, or
+   `Need info`.
 9. The connector window is closed manually or by the idle watchdog.
 
 Default helper:
@@ -169,7 +192,7 @@ When Codex uses the safer `user-web` path, the handoff should be short:
 Open ChatGPT Web with the Connected Agent connector attached.
 Paste and send the prompt that Codex prepared.
 When ChatGPT finishes, paste the answer back into Codex.
-Codex will classify the advice as Adopt / Ask / Reject.
+Codex will classify the advice as Adopt / Adapt / Reject / Need info.
 ```
 
 ## Documentation Map

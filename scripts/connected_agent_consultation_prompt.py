@@ -149,7 +149,7 @@ Task:
 {clean_question}
 
 Connector steps:
-1. Prefer calling open_default_workspace with no arguments to open the already-authorized single allowed root. If ChatGPT still shows a stale connector schema without open_default_workspace, call open_workspace with path exactly "default" as a no-local-path compatibility alias. Do not call open_workspace with a /Users/... local absolute path unless Codex explicitly gives that instruction in this ChatGPT chat. If both open_default_workspace and open_workspace path "default" fail, stop and report that the workspace could not be opened.
+1. Apply this deterministic workspace-open rule; do not ask the user to choose an entry point. If open_default_workspace is visible, call it with no arguments. Otherwise, if open_workspace is visible, call it exactly once with path "default". The "default" alias is the required legacy-schema compatibility path, not an optional suggestion, and needs neither confirmation nor a local absolute path. Never claim that a server change or explicit filesystem path is required merely because open_default_workspace is absent. After opening, verify that the returned root is the currently authorized workspace. Report failure only if the applicable visible entry point actually returns an error. Never guess or request a /Users/... path.
 2. {file_instruction}
 3. Use only connector tools. For context inspection, use ls, glob, grep, read, and read_lines. Prefer source files over generated assets: skip node_modules, dist/build outputs, image galleries, sourcemaps, and lockfile-sized dependency artifacts unless Codex explicitly asks for them. Whole-file read is intended for task-relevant UTF-8 files up to the server limit; for larger source files, use grep to locate relevant symbols and read_lines for bounded 1-based line ranges. In default Connected Agent mode, write, edit, and bash require approval. Do not use Python, browser file checks, uploads, screenshots, or chat-only guesses.
 4. Protected boundary. Do not read, search, write, edit, or run commands against:
@@ -161,7 +161,7 @@ Connector steps:
 Reply in Chinese with:
 1. whether the Connected Agent connector truly worked,
 2. exactly which files were listed, searched, read, denied, or failed,
-3. `Adopt`, `Ask`, and `Reject` recommendations,
+3. `Adopt`, `Adapt`, `Reject`, and `Need info` recommendations,
 4. the two smallest fixes needed for smoother user use,
 5. any remaining risk, including the fact that Connected Agent is 3/5-5/5 while online and Danger Auto is 5/5.
 """

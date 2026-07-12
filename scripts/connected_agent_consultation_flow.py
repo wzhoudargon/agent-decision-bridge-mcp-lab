@@ -306,7 +306,7 @@ def capture_and_keep_open(args: argparse.Namespace) -> int:
     else:
         print("Risk after capture: 3/5-5/5 until idle shutdown closes the session.")
         print(f"Idle shutdown: {DEFAULT_IDLE_TIMEOUT_SECONDS} seconds after last Connected Agent use.")
-    print("Next step: classify captured advice as Adopt / Ask / Reject.")
+    print("Next step: classify captured advice as Adopt / Adapt / Reject / Need info.")
     return 0
 
 
@@ -537,7 +537,7 @@ def render_handoff(advisor_channel: str) -> str:
                 "Next step for Codex:",
                 "  Send the copied prompt in ChatGPT Web using the attached Connected Agent connector.",
                 "  If browser automation cannot type or send reliably, switch to user-web handoff or close the window.",
-                "  After advice returns, classify it locally as Adopt / Ask / Reject.",
+                "  After advice returns, classify it locally as Adopt / Adapt / Reject / Need info.",
             ]
         )
     if advisor_channel == "direct-tool":
@@ -546,7 +546,7 @@ def render_handoff(advisor_channel: str) -> str:
                 MODEL_SELECTION_NOTICE,
                 "Next step for Codex:",
                 "  Call the available advisor channel with the copied prompt.",
-                "  After advice returns, classify it locally as Adopt / Ask / Reject.",
+                "  After advice returns, classify it locally as Adopt / Adapt / Reject / Need info.",
             ]
         )
     return "\n".join(
@@ -556,7 +556,7 @@ def render_handoff(advisor_channel: str) -> str:
             "  Open a ChatGPT Web conversation where the Connected Agent connector is visible.",
             "  Paste and send the copied prompt.",
             "  When ChatGPT finishes, paste the answer back into Codex.",
-            "  Codex will classify the advice as Adopt / Ask / Reject and close the loop.",
+            "  Codex will classify the advice as Adopt / Adapt / Reject / Need info and close the loop.",
         ]
     )
 

@@ -150,7 +150,7 @@ Connected Agent advice capture:
 Local fact check:
 | External recommendation | Local fact check | Decision | Reason | Next action | Authorization source |
 |---|---|---|---|---|---|
-| Pending Codex review of captured Connected Agent advice | Not yet checked against local files, tests, and current constraints | Need info | This helper only captures the advice and creates a review gate | Run agent-decision-bridge Import Mode and classify material recommendations as Adopt / Ask / Reject | external model only, not authorization |
+| Pending Codex review of captured Connected Agent advice | Not yet checked against local files, tests, and current constraints | Need info | This helper only captures the advice and creates a review gate | Run agent-decision-bridge Import Mode and classify material recommendations as Adopt / Adapt / Reject / Need info | external model only, not authorization |
 
 Captured advice:
 ```markdown
