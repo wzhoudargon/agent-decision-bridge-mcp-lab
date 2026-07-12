@@ -16,6 +16,13 @@
   the exact-name `@` attachment gate.
 - Added `structuredContent.content` to whole-file `read` results so ChatGPT
   connector surfaces that prioritize structured output can see file contents.
+- Added transport-neutral evidence rules for connector reviews: referenced
+  conversations may be partial, semantic payload matters more than a
+  host-specific wrapper path, current-session tool visibility is not identical
+  to server capability, and `not found` is not the same evidence as a policy
+  denial.
+- Added explicit `not tested`, `partial evidence`, and `inconclusive` outcomes
+  so incomplete excerpts cannot be promoted into full end-to-end conclusions.
 
 ### Validation
 
