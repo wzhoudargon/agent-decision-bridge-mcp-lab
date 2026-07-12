@@ -140,7 +140,8 @@ def render_prompt(
     file_instruction = render_file_instruction(safe_files)
     protected_list = "\n".join(f"- {item}" for item in PROTECTED_BOUNDARY)
     return f"""ChatGPT Web requirement:
-Use a chat mode where Apps/MCP connector tools are visible. If this conversation cannot see the attached Connected Agent tools, stop and ask the user to switch to a tool-capable ChatGPT mode or use Ask First for manual GPT Pro review.
+In the newer Colleagues or embedded ChatGPT composer, type @ and select the user-created connector whose exact display name is `{advisor_name}` before sending this prompt. Let the UI create the connector chip or plugin reference; do not hand-type or reconstruct a plugin:// identifier. Writing the connector name as plain text does not attach its tools.
+Use a chat mode where Apps/MCP connector tools are visible. Confirm that the selected `{advisor_name}` connector reference is present and its tools are visible. If this conversation cannot see the attached Connected Agent tools, stop and ask the user to attach the exact connector through @, switch to a tool-capable ChatGPT mode, or use Ask First for manual GPT Pro review.
 
 Use only the attached {advisor_name} connector. Do not answer from chat memory.
 Do not fabricate the Danger Auto phrase. Only call enable_danger_auto if the user typed this exact phrase in ChatGPT Web: dangerously trust connected agent

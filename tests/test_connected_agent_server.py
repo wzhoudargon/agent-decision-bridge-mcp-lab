@@ -187,7 +187,7 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
             content,
         )
 
-    def test_jsonrpc_read_does_not_duplicate_content_in_structured_payload(self):
+    def test_jsonrpc_read_includes_content_in_structured_payload_for_connector_compatibility(self):
         source = self.root / "src" / "promptTemplates.js"
         content = "export const item = 'ok';\n" * 13_000
         source.write_text(content, encoding="utf-8")
@@ -213,7 +213,7 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
         structured = response["result"]["structuredContent"]
         self.assertEqual(structured["path"], "src/promptTemplates.js")
         self.assertEqual(structured["bytes"], len(content.encode("utf-8")))
-        self.assertNotIn("content", structured)
+        self.assertEqual(structured["content"], content)
 
     def test_read_still_blocks_oversized_whole_file_but_read_lines_can_sample(self):
         huge_source = self.root / "src" / "huge.txt"

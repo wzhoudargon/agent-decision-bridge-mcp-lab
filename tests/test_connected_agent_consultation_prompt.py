@@ -20,6 +20,11 @@ class ConnectedAgentConsultationPromptTests(unittest.TestCase):
         )
 
         self.assertIn("Agent Decision Bridge Connected Agent", text)
+        self.assertIn("type @ and select the user-created connector", text)
+        self.assertIn("exact display name", text)
+        self.assertIn("Writing the connector name as plain text does not attach its tools", text)
+        self.assertIn("do not hand-type or reconstruct a plugin:// identifier", text)
+        self.assertIn("Confirm that the selected `Agent Decision Bridge Connected Agent` connector reference is present", text)
         self.assertIn("deterministic workspace-open rule", text)
         self.assertIn("If open_default_workspace is visible", text)
         self.assertIn('call it exactly once with path "default"', text)
@@ -58,6 +63,17 @@ class ConnectedAgentConsultationPromptTests(unittest.TestCase):
         self.assertIn("Read exactly these 2 files", text)
         self.assertIn("README.md", text)
         self.assertIn("docs/security-public.md", text)
+
+    def test_custom_connector_display_name_is_used_for_colleagues_attachment(self):
+        text = prompt.render_prompt(
+            question="Review this project.",
+            allowed_root="/tmp/example-project",
+            advisor_name="My User Created Connector",
+        )
+
+        self.assertIn("type @ and select the user-created connector", text)
+        self.assertIn("`My User Created Connector`", text)
+        self.assertIn("Use only the attached My User Created Connector connector", text)
 
     def test_deep_prompt_includes_larger_review_set(self):
         text = prompt.render_prompt(

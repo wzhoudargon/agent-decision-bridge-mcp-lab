@@ -1160,6 +1160,7 @@ def _call_tool(params: Dict[str, Any], manager: FullAgentWorkspaceManager) -> Di
                 {
                     "path": arguments["path"],
                     "bytes": len(content.encode("utf-8")),
+                    "content": content,
                 },
             )
         if name == "read_lines":

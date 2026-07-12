@@ -26,9 +26,15 @@ First instead.
    - `direct-tool`: Codex has a callable advisor tool.
 4. Opens a short Connected Agent session only after the advisor channel is ready.
 5. Runs the fast public health check before asking ChatGPT Web to use the connector.
-6. Tells the user to use a ChatGPT Web chat mode where Apps/MCP connector tools
-   are visible. If the connector is not visible, Codex should stop at
-   `waiting_for_advisor_channel` or fall back to Ask First.
+6. On the newer Colleagues or embedded ChatGPT surface, discovers the exact
+   user-created connector display name, then tells the user to type `@` and
+   select that exact connector in the composer. For the default connector in
+   this project, the name is `Agent Decision Bridge Connected Agent`. The UI
+   may render the selection as a `plugin://...` reference; users should not
+   hand-type or reconstruct account-specific plugin IDs. A plain-text connector
+   name does not attach tools. Codex confirms that the connector reference and
+   tools are visible before continuing. If they are not visible, Codex should
+   stop at `waiting_for_advisor_channel` or fall back to Ask First.
 7. Gives ChatGPT Web a compact prompt that opens the workspace deterministically:
    call `open_default_workspace` when visible; otherwise call
    `open_workspace` exactly once with path `"default"`. The compatibility alias
@@ -37,6 +43,9 @@ First instead.
    The prompt then inspects context first, lets the
    advisor choose task-relevant files under the allowed root, and hard-blocks
    high-risk credential paths at the server.
+   Whole-file `read` returns the UTF-8 body in both the MCP text content block
+   and `structuredContent.content` for ChatGPT Connector compatibility. Use
+   `read_lines` for bounded excerpts and large source files.
 8. Allows write/edit/bash through one-action approval by default: the tool
    returns `approval_id`, ChatGPT asks the user to approve that exact action,
    calls `grant_action_approval`, and retries once. The hidden danger switch
@@ -89,7 +98,7 @@ being controlled:
 In the safer `user-web` fallback, the user only needs to:
 
 ```text
-1. Open ChatGPT Web with a tool-capable chat mode selected and the Connected Agent connector attached.
+1. Open ChatGPT Web with a tool-capable chat mode selected. Type @ and select the exact user-created connector name shown in the connector detail; for the default setup, select Agent Decision Bridge Connected Agent.
 2. Paste and send the prompt that Codex copied/prepared.
 3. Paste ChatGPT's answer back into Codex.
 ```
