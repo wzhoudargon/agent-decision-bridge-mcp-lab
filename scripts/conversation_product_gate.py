@@ -75,7 +75,7 @@ def evaluate_gate(
         )
 
     if mode in {"read-only-project", "connected-agent"}:
-        risk = "3/5-5/5" if mode == "connected-agent" else "3/5-4/5"
+        risk = "4/5-5/5" if mode == "connected-agent" else "3/5-4/5"
         if advisor_ready(advisor_channel, advisor_health):
             return status(
                 current_state=(

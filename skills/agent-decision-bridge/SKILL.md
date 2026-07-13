@@ -27,10 +27,12 @@ There are exactly two public tiers:
    connector is opened. Risk `1/5`.
 2. **Connected Agent** — ChatGPT Web connects to a short-lived, explicitly
    allowed project root. It can inspect the project and act as a controlled
-   project executor. Risk `3/5-5/5` while online.
+   project executor. Risk `4/5-5/5` while online.
 
-The three permission choices inside Connected Agent are not product tiers.
-Never present them as a third or fourth tier.
+Connected Agent has exactly two user-facing permission choices: Controlled
+Auto by default and the explicit Danger Auto switch. A server Approval state
+may remain as a hidden fallback for direct clients and raw actions; never
+present it as a third choice or product tier.
 
 Route explicit first-tier wording (`第一档`, `Ask First`) to Ask First. Route
 explicit second-tier wording (`第二档`, `Connected Agent`,
@@ -86,11 +88,12 @@ If the name cannot be discovered, ask the user to open the connector detail or
 
 ## Connected Agent Contract Gate
 
-The current complete contract is version `2.0`:
+The current complete contract is version `2.1`:
 
 ```text
-open_default_workspace, open_workspace, ls, read, read_lines, file_info,
-preview_patch, apply_patch, list_tasks, run_task, write, edit, grep, glob, bash,
+open_default_workspace, open_workspace, ls, read, read_lines, prepare_action,
+commit_action, file_info, preview_patch, apply_patch, list_tasks, run_task,
+write, edit, grep, glob, bash,
 set_permission_mode, permission_mode_status, enable_danger_auto,
 danger_auto_status, disable_danger_auto, grant_action_approval,
 request_workspace_access, grant_workspace_access
@@ -124,18 +127,20 @@ choose a path. Never ask the web model to fill a `/Users/...` path.
 
 ## Connected Agent Permission Choices
 
-Connected Agent starts in **Approval**. Explain the choices this way:
+Opening the second tier starts **Controlled Auto**. Explain the choices this
+way:
 
 | Internal mode | Meaning for the user | What can run automatically |
 |---|---|---|
-| `approval` | Default. Show the exact action and ask every time. | No side effects |
-| `controlled_auto` | Recommended when the user wants continued bounded execution. | Only an already previewed patch and an owner-configured task |
+| `controlled_auto` | Default when the user opens the second tier. | An already previewed patch, an immutable prepared action, or an owner-configured task |
 | `danger_auto` | Hidden expert switch, fixed risk `5/5`. | Broader safe project-local write/edit/bash |
 
-### Approval
+### Hidden one-action fallback
 
-Read/list/search are automatic inside the opened allowed root. Every side effect
-(`write`, `edit`, `apply_patch`, `bash`, or `run_task`) uses one-action approval:
+Raw `write`, `edit`, and `bash` retain a legacy hidden one-action approval path.
+Do not use this fragile full-argument replay path for normal Controlled Auto
+work. Low-level direct clients may also start in the fallback, where bounded
+apply/commit calls and `run_task` ask:
 
 1. The tool returns `approval_id` and the exact action.
 2. Show the exact file/command, intended effect, risk, and `approval_id`.
@@ -148,17 +153,36 @@ as approval.
 
 ### Controlled Auto
 
-Enable only after the user clearly confirms this mode in the current chat, then
-call `set_permission_mode(mode="controlled_auto", confirmation=<their words>)`.
+Treat the user's request to open the second tier as consent for bounded
+Controlled Auto. The product session helper starts in this mode. If a low-level
+direct client reports the hidden Approval fallback, call
+`set_permission_mode(mode="controlled_auto", confirmation=<their words>)` only
+when the current user clearly requested the second tier.
 
-It automates only two bounded workflows:
+It automates only these bounded workflows:
 
 - File change: `file_info -> preview_patch -> apply_patch`. The preview is bound
   to the current file hash, expires, and can be used once. If the file changes,
-  make a new preview.
+  make a new preview. Inspect `previewed_patch_confirmation`: when it is
+  `host_native_once`, show the diff and call `apply_patch` once with the bound
+  `preview_id`; do not request or grant a second server `approval_id`. Direct
+  clients may instead report `server_one_action_approval`.
 - Project check: `list_tasks -> run_task`. Run only an exact returned task name.
   Tasks are configured locally when the session starts; do not invent a task or
   add arbitrary arguments.
+
+For file creation, targeted edit, or ordinary project-local bash, use the bound
+action workflow:
+
+1. Call `prepare_action` with the complete intended parameters. It validates and
+   stores the immutable action without executing it.
+2. Show the returned action and diff.
+3. When `prepared_action_confirmation=host_native_once`, call `commit_action`
+   once using only the same `workspace_id` and single-use `action_id`. Do not
+   regenerate the content, find/replace text, or command, and do not use
+   `grant_action_approval`.
+4. A low-level `server_one_action_approval` client may approve and retry only
+   the small unchanged `commit_action` token call.
 
 Raw `write`, `edit`, and `bash` still require one-action approval in Controlled
 Auto. Use `permission_mode_status` instead of guessing the active mode.
@@ -184,7 +208,8 @@ may still return a separately grantable one-action approval.
   sourcemaps, image galleries, and large dependency artifacts unless required.
 - Whole-file `read` is for task-relevant UTF-8 files up to the server limit.
   Use targeted `grep` and bounded 1-based `read_lines` for larger files.
-- Prefer previewed patches and configured tasks over raw write/edit/bash.
+- Prefer previewed patches, prepared actions, and configured tasks over raw
+  write/edit/bash.
 - Report exactly which files were listed, searched, read, changed, denied, or
   failed. Do not invent downstream results after a failed step.
 
@@ -234,7 +259,7 @@ fact-check tables, advisor-loop stop rules, and Decision Snapshot format.
 - Normal project files are not secret merely because their names contain words
   such as `token` or `secret`; use the server's known protected-path policy.
 - Network, browser/desktop, clipboard, and out-of-workspace access are not part
-  of Connected Agent contract `2.0`.
+  of Connected Agent contract `2.1`.
 - Git remote operations, dependency installation, permission changes, broad
   moves, and destructive actions remain separate high-risk approvals or blocks.
 - Expanding the session to another workspace always requires a separate
@@ -250,10 +275,13 @@ fact-check tables, advisor-loop stop rules, and Decision Snapshot format.
 ## Common Mistakes
 
 - Calling internal permission modes “three product tiers.”
+- Presenting hidden Approval fallback as a third user-facing permission choice.
 - Claiming a plain-text connector name loaded tools.
 - Reusing a stale ChatGPT conversation after the server contract changed.
 - Asking for an absolute local path instead of using the deterministic default.
 - Letting Controlled Auto run arbitrary bash or unpreviewed writes.
+- Replaying a full raw write/edit/bash request after approval instead of using a
+  bound `prepare_action -> commit_action` token.
 - Treating a package-ready state as proof an advisor was consulted.
 - Treating external advice as user authorization.
 - Continuing advisor rounds after the decision has converged.

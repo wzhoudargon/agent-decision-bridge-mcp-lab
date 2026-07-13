@@ -61,7 +61,7 @@ class ConnectedAgentStatusTests(unittest.TestCase):
                 [
                     "Current state: ready_to_open_connected_agent",
                     "Requested mode: connected-agent",
-                    "Risk if opened: 3/5-5/5",
+                    "Risk if opened: 4/5-5/5",
                 ]
             ),
         )

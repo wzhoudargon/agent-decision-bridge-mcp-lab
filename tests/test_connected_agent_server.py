@@ -73,6 +73,82 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
         self.assertEqual(command["stdout"], "ok")
         self.assertEqual(command["risk_level"], "5/5")
 
+    def test_blank_optional_root_paths_and_cwds_normalize_without_weakening_file_paths(self):
+        entries = self.manager.list_directory(self.workspace, "")
+        self.assertIn("README.md", [entry["name"] for entry in entries])
+        self.assertEqual(
+            self.manager.grep(self.workspace, "hello full agent", "   ")[0]["path"],
+            "README.md",
+        )
+        command = self.manager.run_bash(self.workspace, "printf blank-cwd", cwd="")
+        self.assertEqual(command["stdout"], "blank-cwd")
+
+        with self.assertRaises(srv.AccessDenied):
+            self.manager.read_file(self.workspace, "")
+
+        connected = srv.FullAgentWorkspaceManager(
+            [self.root],
+            profile=srv.PROFILE_CONNECTED_AGENT,
+            trust_host_confirmation_for_previewed_patches=True,
+            initial_permission_mode=srv.PERMISSION_CONTROLLED_AUTO,
+        )
+        connected_workspace = connected.open_default_workspace()["workspace_id"]
+        prepared = connected.prepare_action(
+            connected_workspace,
+            "bash",
+            command="printf prepared-blank-cwd",
+            cwd="",
+        )
+        self.assertEqual(prepared["action"]["cwd"], ".")
+        committed = connected.commit_action(
+            connected_workspace,
+            prepared["action_id"],
+        )
+        self.assertEqual(committed["result"]["stdout"], "prepared-blank-cwd")
+
+        response = srv.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 61,
+                "method": "tools/call",
+                "params": {
+                    "name": "ls",
+                    "arguments": {
+                        "workspace_id": connected_workspace,
+                        "path": "",
+                    },
+                },
+            },
+            connected,
+        )
+        self.assertFalse(response["result"]["isError"])
+        self.assertIn(
+            "README.md",
+            [
+                entry["name"]
+                for entry in response["result"]["structuredContent"]["entries"]
+            ],
+        )
+
+        tools = {
+            tool["name"]: tool
+            for tool in srv.tool_definitions(srv.PROFILE_CONNECTED_AGENT)
+        }
+        for tool_name, field_name in (
+            ("ls", "path"),
+            ("grep", "path"),
+            ("prepare_action", "cwd"),
+            ("bash", "cwd"),
+        ):
+            self.assertEqual(
+                tools[tool_name]["inputSchema"]["properties"][field_name]["default"],
+                ".",
+            )
+        self.assertNotIn(
+            "default",
+            tools["read"]["inputSchema"]["properties"]["path"],
+        )
+
     def test_full_agent_profile_blocks_protected_paths_by_default(self):
         entries = self.manager.list_directory(self.workspace)
         entry_names = [entry["name"] for entry in entries]
@@ -417,7 +493,7 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
         self.assertTrue(write["result"]["isError"])
         self.assertIn("not available", write["result"]["content"][0]["text"])
 
-    def test_connected_agent_default_requires_approval_for_mutations(self):
+    def test_direct_connected_agent_default_requires_approval_for_mutations(self):
         manager = srv.FullAgentWorkspaceManager(
             [self.root], profile=srv.PROFILE_CONNECTED_AGENT
         )
@@ -435,6 +511,8 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
                 "ls",
                 "read",
                 "read_lines",
+                "prepare_action",
+                "commit_action",
                 "file_info",
                 "preview_patch",
                 "apply_patch",
@@ -547,11 +625,63 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
 
         self.assertEqual(opened["contract_version"], srv.TOOL_CONTRACT_VERSION)
         self.assertEqual(opened["permission_mode"], srv.PERMISSION_APPROVAL)
+        self.assertEqual(
+            opened["previewed_patch_confirmation"],
+            "server_one_action_approval",
+        )
         self.assertEqual(opened["tools"], manager.tool_names)
         self.assertEqual(
             manager.tool_names,
             [tool["name"] for tool in srv.tool_definitions(srv.PROFILE_CONNECTED_AGENT)],
         )
+
+    def test_product_session_starts_controlled_auto_with_hidden_approval_fallback(self):
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root],
+            profile=srv.PROFILE_CONNECTED_AGENT,
+            allowed_tasks={"check": "printf checked"},
+            trust_host_confirmation_for_previewed_patches=True,
+            initial_permission_mode=srv.PERMISSION_CONTROLLED_AUTO,
+        )
+
+        opened = manager.open_default_workspace()
+        status = manager.permission_mode_status()
+
+        self.assertEqual(opened["permission_mode"], srv.PERMISSION_CONTROLLED_AUTO)
+        self.assertEqual(
+            opened["visible_permission_modes"],
+            [srv.PERMISSION_CONTROLLED_AUTO, srv.PERMISSION_DANGER_AUTO],
+        )
+        self.assertFalse(opened["server_approval_fallback_active"])
+        self.assertEqual(status["base_permission_mode"], srv.PERMISSION_CONTROLLED_AUTO)
+        self.assertEqual(
+            status["automatic_tools"],
+            ["apply_patch", "commit_action", "run_task"],
+        )
+        self.assertEqual(status["risk_level"], "4/5-5/5")
+
+        workspace = opened["workspace_id"]
+        self.assertEqual(manager.run_task(workspace, "check")["stdout"], "checked")
+        with self.assertRaises(srv.ApprovalRequired):
+            manager.write_file(workspace, "raw.txt", "still gated\n")
+
+        manager.enable_danger_auto(srv.DANGER_AUTO_PHRASE)
+        restored = manager.disable_danger_auto()
+        self.assertEqual(restored["permission_mode"], srv.PERMISSION_CONTROLLED_AUTO)
+
+        manager.enable_danger_auto(srv.DANGER_AUTO_PHRASE)
+        manager.session_last_activity = time.time() - srv.DANGER_AUTO_IDLE_SECONDS - 1
+        expired = manager.danger_auto_status()
+        self.assertEqual(expired["permission_mode"], srv.PERMISSION_CONTROLLED_AUTO)
+        self.assertFalse(expired["danger_auto_enabled"])
+
+    def test_invalid_initial_permission_mode_is_rejected(self):
+        with self.assertRaises(ValueError):
+            srv.FullAgentWorkspaceManager(
+                [self.root],
+                profile=srv.PROFILE_CONNECTED_AGENT,
+                initial_permission_mode=srv.PERMISSION_DANGER_AUTO,
+            )
 
     def test_preview_patch_requires_approval_then_applies_exact_single_use_preview(self):
         manager = srv.FullAgentWorkspaceManager(
@@ -599,6 +729,284 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
         with self.assertRaises(srv.AccessDenied):
             manager.apply_patch(workspace, preview["preview_id"])
 
+    def test_host_confirmation_commits_one_bound_preview_without_server_approval(self):
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root],
+            profile=srv.PROFILE_CONNECTED_AGENT,
+            trust_host_confirmation_for_previewed_patches=True,
+        )
+        workspace = manager.open_default_workspace()["workspace_id"]
+        info = manager.file_info(workspace, "README.md")
+        preview = manager.preview_patch(
+            workspace,
+            "README.md",
+            "host confirmed\n",
+            info["sha256"],
+        )
+
+        self.assertEqual(preview["commit_token"], preview["preview_id"])
+        self.assertEqual(preview["commit_confirmation"], "host_native_once")
+        applied = manager.apply_patch(workspace, preview["preview_id"])
+
+        self.assertTrue(applied["applied"])
+        self.assertEqual(applied["confirmation"], "host_native_once")
+        self.assertEqual(manager.read_file(workspace, "README.md"), "host confirmed\n")
+        self.assertEqual(manager.pending_action_approvals, {})
+        with self.assertRaises(srv.AccessDenied):
+            manager.apply_patch(workspace, preview["preview_id"])
+        with self.assertRaises(srv.ApprovalRequired):
+            manager.write_file(workspace, "raw.txt", "still server approved\n")
+
+    def test_host_confirmation_preview_stays_workspace_and_hash_bound(self):
+        other_root = Path(self.tempdir.name) / "other"
+        other_root.mkdir()
+        (other_root / "README.md").write_text("other\n", encoding="utf-8")
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root, other_root],
+            profile=srv.PROFILE_CONNECTED_AGENT,
+            trust_host_confirmation_for_previewed_patches=True,
+        )
+        workspace = manager.open_workspace(str(self.root))["workspace_id"]
+        other_workspace = manager.open_workspace(str(other_root))["workspace_id"]
+        info = manager.file_info(workspace, "README.md")
+        preview = manager.preview_patch(
+            workspace,
+            "README.md",
+            "bound result\n",
+            info["sha256"],
+        )
+
+        with self.assertRaises(srv.AccessDenied):
+            manager.apply_patch(other_workspace, preview["preview_id"])
+        (self.root / "README.md").write_text("changed elsewhere\n", encoding="utf-8")
+        with self.assertRaises(srv.AccessDenied):
+            manager.apply_patch(workspace, preview["preview_id"])
+
+    def test_prepared_actions_commit_from_one_bound_token_without_argument_replay(self):
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root],
+            profile=srv.PROFILE_CONNECTED_AGENT,
+            trust_host_confirmation_for_previewed_patches=True,
+            initial_permission_mode=srv.PERMISSION_CONTROLLED_AUTO,
+        )
+        workspace = manager.open_default_workspace()["workspace_id"]
+
+        prepared_write = manager.prepare_action(
+            workspace,
+            "write",
+            path_value="prepared.txt",
+            content="prepared write\n",
+        )
+        self.assertEqual(prepared_write["commit_confirmation"], "host_native_once")
+        self.assertIn("+prepared write", prepared_write["diff"])
+        self.assertFalse((self.root / "prepared.txt").exists())
+        committed_write = manager.commit_action(
+            workspace,
+            prepared_write["action_id"],
+        )
+        self.assertTrue(committed_write["committed"])
+        self.assertEqual(
+            (self.root / "prepared.txt").read_text(encoding="utf-8"),
+            "prepared write\n",
+        )
+        with self.assertRaises(srv.AccessDenied):
+            manager.commit_action(workspace, prepared_write["action_id"])
+
+        prepared_edit = manager.prepare_action(
+            workspace,
+            "edit",
+            path_value="prepared.txt",
+            find="prepared",
+            replace="bound",
+            expected_replacements=1,
+        )
+        committed_edit = manager.commit_action(
+            workspace,
+            prepared_edit["action_id"],
+        )
+        self.assertEqual(committed_edit["result"]["replacements"], 1)
+        self.assertEqual(
+            (self.root / "prepared.txt").read_text(encoding="utf-8"),
+            "bound write\n",
+        )
+
+        prepared_bash = manager.prepare_action(
+            workspace,
+            "bash",
+            command="printf prepared-bash",
+        )
+        committed_bash = manager.commit_action(
+            workspace,
+            prepared_bash["action_id"],
+        )
+        self.assertEqual(committed_bash["result"]["stdout"], "prepared-bash")
+
+    def test_prepared_action_is_workspace_stale_state_and_single_use_bound(self):
+        other_root = Path(self.tempdir.name) / "prepared-other"
+        other_root.mkdir()
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root, other_root],
+            profile=srv.PROFILE_CONNECTED_AGENT,
+            trust_host_confirmation_for_previewed_patches=True,
+            initial_permission_mode=srv.PERMISSION_CONTROLLED_AUTO,
+        )
+        workspace = manager.open_workspace(str(self.root))["workspace_id"]
+        other_workspace = manager.open_workspace(str(other_root))["workspace_id"]
+        prepared = manager.prepare_action(
+            workspace,
+            "write",
+            path_value="stale.txt",
+            content="bound\n",
+        )
+
+        with self.assertRaises(srv.AccessDenied):
+            manager.commit_action(other_workspace, prepared["action_id"])
+        (self.root / "stale.txt").write_text("appeared\n", encoding="utf-8")
+        with self.assertRaises(srv.AccessDenied):
+            manager.commit_action(workspace, prepared["action_id"])
+        with self.assertRaises(srv.AccessDenied):
+            manager.commit_action(workspace, prepared["action_id"])
+
+    def test_prepared_action_expires_and_existing_file_drift_consumes_token(self):
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root],
+            profile=srv.PROFILE_CONNECTED_AGENT,
+            trust_host_confirmation_for_previewed_patches=True,
+            initial_permission_mode=srv.PERMISSION_CONTROLLED_AUTO,
+        )
+        workspace = manager.open_default_workspace()["workspace_id"]
+
+        expiring = manager.prepare_action(
+            workspace,
+            "write",
+            path_value="expiring.txt",
+            content="expires\n",
+        )
+        manager.pending_prepared_actions[expiring["action_id"]]["created_at"] = (
+            time.time() - srv.PREPARED_ACTION_IDLE_SECONDS - 1
+        )
+        with self.assertRaises(srv.AccessDenied):
+            manager.commit_action(workspace, expiring["action_id"])
+
+        prepared_edit = manager.prepare_action(
+            workspace,
+            "edit",
+            path_value="README.md",
+            find="hello full agent",
+            replace="prepared edit",
+            expected_replacements=1,
+        )
+        (self.root / "README.md").write_text("changed elsewhere\n", encoding="utf-8")
+        with self.assertRaises(srv.AccessDenied):
+            manager.commit_action(workspace, prepared_edit["action_id"])
+        with self.assertRaises(srv.AccessDenied):
+            manager.commit_action(workspace, prepared_edit["action_id"])
+
+    def test_direct_client_prepared_commit_keeps_server_approval_fallback(self):
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root],
+            profile=srv.PROFILE_CONNECTED_AGENT,
+        )
+        workspace = manager.open_default_workspace()["workspace_id"]
+        prepared = manager.prepare_action(
+            workspace,
+            "write",
+            path_value="direct-prepared.txt",
+            content="server approved\n",
+        )
+
+        with self.assertRaises(srv.ApprovalRequired) as first:
+            manager.commit_action(workspace, prepared["action_id"])
+        approval_id = first.exception.structured["approval_id"]
+        manager.grant_action_approval(approval_id, "确认提交这个已准备动作")
+        committed = manager.commit_action(
+            workspace,
+            prepared["action_id"],
+            approval_id,
+        )
+
+        self.assertTrue(committed["committed"])
+        self.assertEqual(
+            (self.root / "direct-prepared.txt").read_text(encoding="utf-8"),
+            "server approved\n",
+        )
+
+    def test_prepare_action_preserves_hard_blocks_and_rejects_high_risk_bash(self):
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root],
+            profile=srv.PROFILE_CONNECTED_AGENT,
+            trust_host_confirmation_for_previewed_patches=True,
+            initial_permission_mode=srv.PERMISSION_CONTROLLED_AUTO,
+        )
+        workspace = manager.open_default_workspace()["workspace_id"]
+
+        with self.assertRaises(srv.AccessDenied):
+            manager.prepare_action(
+                workspace,
+                "write",
+                path_value=".env",
+                content="nope\n",
+            )
+        with self.assertRaises(srv.AccessDenied):
+            manager.prepare_action(
+                workspace,
+                "bash",
+                command="curl https://example.com",
+            )
+        with self.assertRaises(srv.AccessDenied):
+            manager.prepare_action(
+                workspace,
+                "bash",
+                command="rm README.md",
+            )
+
+    def test_preview_and_apply_patch_publish_native_confirmation_annotations(self):
+        tools = {
+            tool["name"]: tool
+            for tool in srv.tool_definitions(srv.PROFILE_CONNECTED_AGENT)
+        }
+
+        self.assertEqual(len(tools), 25)
+        self.assertTrue(all("annotations" in tool for tool in tools.values()))
+        self.assertTrue(tools["preview_patch"]["annotations"]["readOnlyHint"])
+        self.assertFalse(tools["apply_patch"]["annotations"]["readOnlyHint"])
+        self.assertTrue(tools["apply_patch"]["annotations"]["destructiveHint"])
+        self.assertFalse(tools["run_task"]["annotations"]["readOnlyHint"])
+        self.assertFalse(tools["run_task"]["annotations"]["destructiveHint"])
+        self.assertFalse(tools["run_task"]["annotations"]["openWorldHint"])
+        for name in (
+            "open_default_workspace",
+            "open_workspace",
+            "ls",
+            "read",
+            "read_lines",
+            "prepare_action",
+            "file_info",
+            "list_tasks",
+            "grep",
+            "glob",
+            "permission_mode_status",
+            "danger_auto_status",
+            "request_workspace_access",
+        ):
+            self.assertTrue(tools[name]["annotations"]["readOnlyHint"], name)
+        for name in (
+            "write",
+            "edit",
+            "bash",
+            "commit_action",
+            "set_permission_mode",
+            "enable_danger_auto",
+            "disable_danger_auto",
+            "grant_action_approval",
+            "grant_workspace_access",
+        ):
+            self.assertFalse(tools[name]["annotations"]["readOnlyHint"], name)
+        self.assertEqual(
+            tools["set_permission_mode"]["inputSchema"]["properties"]["mode"]["enum"],
+            [srv.PERMISSION_CONTROLLED_AUTO],
+        )
+
     def test_preview_patch_rejects_stale_hash_and_file_changes(self):
         manager = srv.FullAgentWorkspaceManager(
             [self.root], profile=srv.PROFILE_CONNECTED_AGENT
@@ -629,7 +1037,10 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
             "确认启用受控自动模式",
         )
         self.assertEqual(status["permission_mode"], srv.PERMISSION_CONTROLLED_AUTO)
-        self.assertEqual(status["automatic_tools"], ["apply_patch", "run_task"])
+        self.assertEqual(
+            status["automatic_tools"],
+            ["apply_patch", "commit_action", "run_task"],
+        )
 
         info = manager.file_info(workspace, "README.md")
         preview = manager.preview_patch(

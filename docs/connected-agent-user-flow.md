@@ -15,7 +15,7 @@ First instead.
 
 ## What Codex Does
 
-1. Reports that Connected Agent is risk `3/5-5/5` while online; Danger Auto is
+1. Reports that the default Controlled Auto session is risk `4/5-5/5` while online; Danger Auto is
    fixed risk `5/5`.
 2. Uses the current project as the allowed root only after the user has clearly
    asked for Connected Agent.
@@ -54,12 +54,19 @@ First instead.
    Whole-file `read` returns the UTF-8 body in both the MCP text content block
    and `structuredContent.content` for ChatGPT Connector compatibility. Use
    `read_lines` for bounded excerpts and large source files.
-8. Starts in internal `approval` mode. Every side effect returns `approval_id`;
-   ChatGPT asks the user to approve that exact action, calls
-   `grant_action_approval`, and retries once. If the user explicitly chooses
-   `controlled_auto`, ChatGPT may use `file_info -> preview_patch -> apply_patch`
-   and `list_tasks -> run_task`; raw write/edit/bash still ask. These are
-   internal permission choices inside Connected Agent, not extra product tiers.
+8. Starts in Controlled Auto when the user opens the second tier. Stored
+   previewed patches, immutable prepared actions, and owner-configured tasks may
+   run automatically. For file creation, targeted edit, or ordinary
+   project-local bash, ChatGPT calls `prepare_action` with the full action,
+   shows the returned action/diff, then calls `commit_action` once with only the
+   same `workspace_id` and single-use `action_id`. The bounded ChatGPT helper
+   relies on that write-annotated call's native connector confirmation; it does
+   not ask the model to reproduce full arguments after approval. ChatGPT may use
+   `file_info -> preview_patch -> apply_patch`,
+   `prepare_action -> commit_action`, and `list_tasks -> run_task`. Raw
+   write/edit/bash remain legacy compatibility tools. Low-level direct clients
+   retain an internal server approval fallback, but it is not a visible
+   permission choice.
    The hidden danger switch
    starts only if the user types `dangerously trust connected agent`, and
    server policy still blocks unsafe commands and sensitive paths.
@@ -89,7 +96,7 @@ For the user, the default status card should be compact:
 Connected Agent: ready / waiting_for_advisor_channel / online / closed
 Advisor channel: user-web / browser-automation / direct-tool / unknown
 Workspace: <current project>
-Risk while online: 3/5-5/5; Danger Auto 5/5
+Risk while online: 4/5-5/5; Danger Auto 5/5
 Current step: prepare / web-consult / capture / idle-wait / close
 Next action: <who does what next>
 ```

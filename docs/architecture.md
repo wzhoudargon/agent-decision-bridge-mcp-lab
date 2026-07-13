@@ -47,7 +47,8 @@ Connected Agent
   ChatGPT Web -> MCP connector
   MCP server -> opens allowed project root
   ChatGPT Web -> lists/reads/searches project files by default
-  ChatGPT Web -> may write/edit/run safe local bash only after approval or hidden danger switch
+  ChatGPT Web -> prepares an immutable change or ordinary local command
+  ChatGPT Web -> commits it with one short single-use token and native confirmation
   Codex/User -> retain final authorization and review responsibility
 ```
 
@@ -183,11 +184,11 @@ necessary project context directly without a decision package:
 - `--mode connected-agent` is required,
 - at least one `--allowed-root` is required,
 - home and filesystem roots are rejected,
-- tool contract `2.0` is generated from the server schema and includes
-  workspace open/read/search tools; `file_info`, `preview_patch`, and
-  `apply_patch`; owner-configured `list_tasks` and `run_task`; raw
-  `write`/`edit`/`bash`; permission-status controls; Danger Auto controls; and
-  action/workspace approval tools,
+- tool contract `2.1` is generated from the server schema and includes 25 tools:
+  workspace open/read/search tools; `prepare_action` and `commit_action`;
+  `file_info`, `preview_patch`, and `apply_patch`; owner-configured `list_tasks`
+  and `run_task`; legacy raw `write`/`edit`/`bash`; permission-status controls;
+  Danger Auto controls; and action/workspace approval tools,
 - when exactly one allowed root is configured, `open_default_workspace` avoids
   passing a local absolute path through ChatGPT Web,
 - stale ChatGPT connector schemas can call `open_workspace` with path exactly
@@ -199,13 +200,29 @@ necessary project context directly without a decision package:
 - whole-file reads are capped at normal source-file scale, currently 1 MB, with
   `read_lines` for larger task-relevant text files,
 - other task-relevant project files may be chosen by the web advisor,
-- the internal permission mode starts at `approval`; every side effect returns
-  `approval_id`, confirm with the user in chat, call `grant_action_approval`,
-  then retry the same tool call once,
-- `controlled_auto` may auto-run only a patch that was stored by
-  `preview_patch` against the current file hash, or an exact command configured
-  locally at session start and returned by `list_tasks`; raw write/edit/bash
-  continue to ask,
+- the product helper starts Connected Agent in `controlled_auto`; stored
+  previewed patches, immutable prepared actions, and owner-configured tasks may
+  run automatically,
+- `prepare_action` validates and stores the full write/edit/ordinary-bash
+  payload. `commit_action` carries only its workspace id and expiring,
+  single-use action id, so the model never has to reproduce full arguments
+  after the confirmation turn,
+- raw write/edit/bash retain hidden legacy one-action approval gates. Low-level
+  direct clients start in the internal server approval fallback, where
+  apply/commit and run_task also require approval; the fallback is not a
+  user-facing mode,
+- `preview_patch` creates an unexpired, single-use `preview_id` bound to the
+  workspace, path, base hash, result hash, and diff. Direct clients require the
+  same server approval flow for `apply_patch`; the bounded ChatGPT session helper
+  can explicitly trust one host-native write confirmation and commit once,
+- the server does not attest the host UI event itself. The session-owner trust
+  flag is therefore enabled only by the ChatGPT product helper by default for
+  bound `apply_patch` and `commit_action` calls, while direct HTTP and stdio
+  clients remain on server approval,
+- Controlled Auto may auto-run only a patch stored by `preview_patch` against
+  the current file hash, an immutable action stored by `prepare_action`, or an
+  exact command configured locally at session start and returned by
+  `list_tasks`; raw write/edit/bash are compatibility-only,
 - expanding the session to another workspace is always separately
   approval-gated in every internal mode,
 - The hidden danger switch starts only after the user typed
@@ -214,7 +231,7 @@ necessary project context directly without a decision package:
   while network, browser/desktop, clipboard, secret-path, and path escape remain
   hard-blocked and install, Git remote, and broad destructive classes remain
   separately approval-gated,
-- risk is `3/5-5/5`; the hidden danger switch is fixed `5/5`.
+- risk is `4/5-5/5`; the hidden danger switch is fixed `5/5`.
 
 ## Deprecated Full-Agent Mode
 

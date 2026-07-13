@@ -27,13 +27,17 @@ Connected Agent
 - It is a controlled project executor, not unrestricted computer control.
 - Requires a user-provided public HTTPS endpoint when ChatGPT Web should call
   the local MCP tools.
-- Internal `approval` mode is the default. Every side effect returns an
-  `approval_id`, ChatGPT asks the user to approve that exact action, calls
-  `grant_action_approval`, and retries the original tool call once with that
-  `approval_id`.
-- Internal `controlled_auto` may automatically apply only a server-stored
-  previewed patch or run an exact locally configured task. Raw write, edit,
-  and bash still ask. These internal permission modes are not extra product tiers.
+- Opening the second tier starts `controlled_auto`. It may automatically apply
+  a stored previewed patch, commit an immutable prepared action, or run an exact
+  owner-configured task. Raw write, edit, and bash retain hidden legacy
+  one-action approval gates. Low-level direct clients start in the hidden
+  server approval fallback, which is not a user-facing mode. For
+  `commit_action`, the complete file content/edit/command remains stored on the
+  server and the model sends only the workspace and single-use action id. For
+  `apply_patch`, the bounded
+  ChatGPT session helper reports `previewed_patch_confirmation=host_native_once`:
+  after showing the stored diff, it calls once and ChatGPT's native connector
+  confirmation is the sole prompt. Direct clients keep the server approval flow.
 - `dangerously trust connected agent` is a hidden danger switch inside
   Connected Agent, not an additional product mode.
 - The hidden switch can auto-run project-local write/edit and safe local bash,
@@ -45,7 +49,7 @@ Connected Agent
   dependency installs, Git remote operations, permission changes, and broad
   destructive operations are denied or require explicit approval.
 - Other task-relevant project files may be inspected.
-- Risk: `3/5-5/5`; the hidden switch is fixed `5/5`.
+- Risk: `4/5-5/5`; the hidden switch is fixed `5/5`.
 - Connector calls should be run in a ChatGPT Web mode where Apps/MCP connector
   tools are visible. If the selected model or chat mode does not expose these
   tools, use Ask First for manual GPT Pro review instead.
@@ -70,19 +74,23 @@ though the connector can request broader tools:
 - open the explicit workspace root,
 - choose task-relevant files by listing/searching the allowed root,
 - do not inspect high-risk credential paths,
-- before any side effect in approval mode, use the one-action approval
-  flow: show the exact file or command, intended change, risk, and returned
-  `approval_id`; after the user approves in chat, call
-  `grant_action_approval` and retry the original tool call once,
-- prefer `file_info -> preview_patch -> apply_patch` for file changes and
+- for file creation, targeted edit, or ordinary project-local bash in
+  Controlled Auto, call `prepare_action`, show its stored action/diff, then call
+  `commit_action` once with only the same workspace and single-use action id,
+- for a previewed patch, show the diff and inspect `previewed_patch_confirmation`;
+  `host_native_once` means call `apply_patch` once with the single-use
+  `preview_id` and rely on the native connector confirmation,
+- prefer `file_info -> preview_patch -> apply_patch` for whole-file replacement,
+  `prepare_action -> commit_action` for other bounded actions, and
   `list_tasks -> run_task` for locally configured checks,
 - do not call `enable_danger_auto` unless the user typed the exact hidden-switch phrase
   `dangerously trust connected agent`,
 - report exactly which files were listed, searched, read, denied, or failed.
 
 Use side-effectful tools only under the active internal permission mode. In
-Controlled Auto, only previewed patches and configured tasks are automatic;
-raw write/edit/bash still require one-action approval.
+Controlled Auto, only previewed patches, immutable prepared actions, and
+configured tasks use bounded automatic server commits. Raw write/edit/bash are
+legacy compatibility tools.
 
 ## User-Facing Requirement
 

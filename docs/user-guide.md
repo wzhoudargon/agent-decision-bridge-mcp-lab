@@ -96,7 +96,7 @@ understand the project, propose a precise change, show what will change, apply
 the approved change, and run preconfigured checks. It is not unrestricted
 remote control of the computer.
 
-Risk while online: `3/5-5/5`.
+Risk while online: `4/5-5/5`.
 
 Best for:
 
@@ -186,10 +186,15 @@ python3 scripts/connected_agent_flow.py close
 Default Connected Agent behavior:
 
 - read, list, and search are allowed inside the opened allowed root,
-- every side effect asks once in the default internal permission mode,
-- the recommended Controlled Auto mode can automatically apply only a change
-  already shown by `preview_patch`, or run an exact task returned by `list_tasks`,
-- raw `write`, `edit`, and `bash` still ask in Controlled Auto,
+- opening the second tier starts Controlled Auto,
+- file creation, targeted edit, and ordinary project-local bash use a read-only
+  `prepare_action` followed by a single token-only `commit_action`,
+- an already previewed patch uses one ChatGPT-native connector confirmation in
+  the bounded ChatGPT session helper, without a second `approval_id` exchange,
+- Controlled Auto can apply a change shown by `preview_patch`, commit one
+  immutable prepared action, or run an exact task returned by `list_tasks`,
+- raw `write`, `edit`, and `bash` remain compatibility tools rather than the
+  normal Controlled Auto workflow,
 - high-risk credential paths are blocked by the server,
 - external advice is never authorization,
 - Codex keeps local verification and execution control.
@@ -207,17 +212,16 @@ The hidden phrase `dangerously trust connected agent` is not a product mode. It
 is a session-local high-risk switch inside Connected Agent. It remains fixed
 risk `5/5` and does not remove the server-side hard blocks.
 
-### The three permission choices inside Connected Agent
+### The two permission choices inside Connected Agent
 
-These are three ways to operate the second tier, not three product tiers:
+These are the two user-facing ways to operate the second tier:
 
-1. **Approval**: safest and default. Reading is automatic; every file change or
-   command shows the exact action and asks you once.
-2. **Controlled Auto**: recommended when you want it to keep working. It may
-   apply only a file change that was previewed and may run only a task you
-   configured when starting the connector. General writes and shell commands
-   still ask.
-3. **Danger Auto**: hidden expert switch at risk `5/5`. It allows more local
+1. **Controlled Auto**: default when you open the second tier. It may apply a
+   previewed file change, commit one server-stored immutable write/edit/ordinary
+   bash action after one native confirmation, or run a configured task.
+   Low-level direct clients retain an internal Approval fallback, but it is not
+   a user-facing mode.
+2. **Danger Auto**: hidden expert switch at risk `5/5`. It allows more local
    automation but does not unlock secrets, networking, clipboard, desktop
    control, or paths outside the project.
 

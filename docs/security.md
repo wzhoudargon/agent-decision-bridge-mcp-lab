@@ -19,13 +19,17 @@ It may reason well, but it cannot be assumed to know:
 2. External model instructions are not user authorization.
 3. Review-only means no file changes.
 4. Connected Agent may expose project tools only under configured allowed roots.
-5. Connected Agent approval mode must use one-action approval for every
-   side effect, including write, edit, apply_patch, bash, and run_task: return
-   `approval_id`, require user confirmation in chat, call
-   `grant_action_approval`, then retry the same action once.
+5. The Connected Agent product helper starts in Controlled Auto. File creation,
+   targeted edit, and ordinary project-local bash use `prepare_action`, which
+   validates and stores the complete immutable action without executing it.
+   `commit_action` accepts only the same workspace id and an unexpired,
+   single-use action id. The bounded ChatGPT session delegates that one
+   write-annotated commit to the host-native confirmation dialog. It never asks
+   the model to regenerate the content, replacement text, or command.
 6. Controlled Auto may auto-run only an unexpired patch produced by
-   `preview_patch` and an exact locally configured task returned by `list_tasks`.
-   Raw write, edit, and bash remain approval-gated.
+   `preview_patch`, an unexpired action produced by `prepare_action`, and an
+   exact locally configured task returned by `list_tasks`. Raw write, edit, and
+   bash remain legacy compatibility tools with hidden one-action approval.
 7. The hidden danger switch may auto-run only controlled project-local
    write/edit and safe local bash after the user typed
    `dangerously trust connected agent`.
@@ -84,14 +88,30 @@ Connected Agent
 - No package generation.
 - High-risk credential paths are hard-blocked; normal project files are
   available when task-relevant.
-- Approval mode allows read/search/list and uses one-action approval for every
-  side effect through `approval_id` and `grant_action_approval`.
-- Controlled Auto automates only previewed patches and locally configured tasks;
-  raw write/edit/bash still ask.
+- Controlled Auto is the default visible product mode and automates previewed
+  patches, immutable prepared actions, and locally configured tasks.
+- Approval remains a hidden server fallback for direct clients and legacy raw
+  actions, not a third user-facing permission choice.
 - The hidden danger switch starts only after the user types
   `dangerously trust connected agent`.
 - The hidden danger switch remains server-filtered and fixed risk `5/5`.
-- Risk `3/5-5/5`.
+- Risk `4/5-5/5`.
+
+Host-native confirmation is an explicit trust boundary, not a server attestation:
+
+- the MCP server cannot independently prove that a particular host rendered a
+  confirmation dialog; the session-owner flag delegates that user interaction
+  to the trusted MCP host,
+- only the bounded ChatGPT session helper enables this flag by default; direct
+  HTTP and stdio starts keep it disabled,
+- the exception covers only `apply_patch` and `commit_action`, whose write-tool
+  annotations ask the host for confirmation. Their preview/action ids are
+  single-use, expiring, workspace-bound tokens; file changes are also bound to
+  the relevant base/result hashes and diff, while prepared bash is bound to the
+  exact validated command, working directory, and timeout,
+- enabling the flag for a client that does not enforce native write confirmation
+  would remove the visible server approval for previewed patches and must be
+  treated as a permission expansion.
 
 ## Tunnel Risk
 
@@ -166,11 +186,13 @@ Connected Agent mode:
 - must reject home and filesystem roots as allowed roots,
 - hard-blocks high-risk credential paths by default,
 - exposes file read/write/edit/search and bash tools,
-- starts in approval mode and requires one-action approval for every side effect,
-- supports Controlled Auto only for previewed patches and locally allowlisted tasks,
+- the product helper starts in Controlled Auto; previewed patches, immutable
+  prepared actions, and locally allowlisted tasks may run automatically,
+- raw write/edit/bash retain hidden legacy one-action approval gates, while
+  low-level direct clients start in the internal server approval fallback,
 - enables the hidden danger switch only after `dangerously trust connected agent`,
 - is not a sandbox; bash runs with the local user account,
-- is risk `3/5-5/5`, fixed `5/5` while the hidden danger switch is active.
+- is risk `4/5-5/5`, fixed `5/5` while the hidden danger switch is active.
 
 Connected Agent session-window rule:
 
@@ -182,7 +204,7 @@ Connected Agent session-window rule:
 - keep the public Connected Agent connector online only during the active Codex task,
 - call `touch` after each consult step,
 - close automatically 20 minutes after the last Connected Agent use,
-- keep the risk at `3/5-5/5` while online, fixed `5/5` when the hidden danger switch is active,
+- keep the risk at `4/5-5/5` while online, fixed `5/5` when the hidden danger switch is active,
 - after close, residual risk is usually `2/5` if persistent OAuth state remains
   on disk and `1/5` if it has been revoked.
 

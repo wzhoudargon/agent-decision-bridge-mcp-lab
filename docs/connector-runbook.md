@@ -336,6 +336,8 @@ open_workspace
 ls
 read
 read_lines
+prepare_action
+commit_action
 file_info
 preview_patch
 apply_patch
@@ -375,13 +377,29 @@ Default behavior:
   `grep` plus bounded `read_lines` ranges for larger source files,
 - default prompts should skip `node_modules`, build outputs, sourcemaps, image
   galleries, and dependency artifacts unless the task explicitly requires them,
-- internal permission mode starts at `approval`; every side effect returns a
-  one-action `approval_id`; after the user approves
-  that exact action in chat, call `grant_action_approval` and retry the
-  original tool call once with that `approval_id`,
-- `controlled_auto` requires clear user confirmation and automates only an
-  unexpired `preview_patch` result or an exact task returned by `list_tasks`;
-  raw write/edit/bash still ask,
+- opening the second tier through the product helper starts Controlled Auto;
+  previewed patches, immutable prepared actions, and owner-configured tasks may
+  run automatically,
+- for file creation, targeted edit, or ordinary project-local bash, call
+  `prepare_action`, show its exact action/diff, then call `commit_action` once
+  with only the same workspace id and single-use action id. The ChatGPT session
+  helper uses the native connector dialog for that write-annotated commit,
+- raw write/edit/bash retain hidden legacy one-action approval gates. Low-level
+  direct clients start in the internal server approval fallback, where
+  apply/commit and run_task also require approval; this fallback is not a
+  user-facing mode,
+- `preview_patch` returns a single-use commit token bound to workspace, path,
+  base/result hashes, diff, and expiry. The ChatGPT session helper enables
+  `host_native_once`, so show the diff and call `apply_patch` once; the native
+  connector dialog is the only confirmation. Add
+  `--server-approval-for-previewed-patches` to keep the legacy two-step flow,
+- do not pass the underlying
+  `--trust-host-confirmation-for-previewed-patches` server flag to a host that
+  does not enforce native write confirmation; the server trusts rather than
+  independently attests that host UI event,
+- Controlled Auto automates only an unexpired `preview_patch` result, an
+  unexpired immutable `prepare_action` result, or an exact task returned by
+  `list_tasks`; raw write/edit/bash are compatibility-only,
 - outside roots require `request_workspace_access` and then
   `grant_workspace_access`; the grant itself always completes a single-use
   approval flow, even in Controlled Auto or Danger Auto.
@@ -396,7 +414,7 @@ Hidden danger switch:
   one-action approval gated,
 - it closes after 20 minutes idle with the session helper.
 
-Risk coefficient: `3/5-5/5`; the hidden danger switch is fixed `5/5`.
+Risk coefficient: `4/5-5/5`; the hidden danger switch is fixed `5/5`.
 
 ## Connected Agent Session Window
 
@@ -602,7 +620,7 @@ Revoke default Connected Agent auth files:
 python3 scripts/reset_decision_inbox_auth.py --connected-agent-defaults
 ```
 
-Risk coefficient: `3/5-5/5`; the hidden danger switch is fixed `5/5`. Bash runs with the
+Risk coefficient: `4/5-5/5`; the hidden danger switch is fixed `5/5`. Bash runs with the
 local user account and is not a sandbox. Do not use broad roots such as home or
 filesystem root. The idle timeout reduces exposure time only; it does not make
 the session safe while it is open.

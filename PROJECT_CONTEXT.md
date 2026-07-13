@@ -33,11 +33,17 @@ There are two current product modes that must not be confused:
      token/OAuth state files.
    - Other task-relevant project files can be selected by the web advisor.
    - It is a controlled project executor inside allowed roots.
-   - Internal approval mode uses one-action approval for every side effect:
-     return `approval_id`, confirm that exact action in chat, call
-     `grant_action_approval`, then retry once with the same `approval_id`.
-   - Internal Controlled Auto may apply only a stored previewed patch and run
-     only an exact locally configured task; raw write/edit/bash still ask.
+   - Opening the second tier starts Controlled Auto. Previewed patches,
+     immutable prepared actions, and owner-configured tasks use bounded commits.
+   - File creation, targeted edit, and ordinary local bash use
+     `prepare_action -> commit_action`: the server stores full parameters and
+     the commit carries only a workspace-bound, expiring, single-use action id.
+   - In the bounded ChatGPT session helper, an already shown `preview_patch`
+     uses a single ChatGPT-native confirmation. Its `preview_id` is the one-use
+     commit token, bound to workspace, path, hashes, diff, and expiry; direct
+     clients keep the server approval flow by default.
+   - Raw write/edit/bash remain legacy compatibility tools. Direct HTTP/stdio
+     clients retain the hidden approval fallback unless their owner opts in.
    - The hidden danger switch starts only after the user types
      `dangerously trust connected agent`; it is session-only and fixed risk
      `5/5`.
@@ -103,8 +109,9 @@ Instead, keep this as a separate lab project:
 4. Run an end-to-end decision package loop. Complete with a synthetic package-only advisor round.
 5. Keep Ask First as the safest mode.
 6. Connected Agent is implemented as the project-aware controlled executor
-   with approval, Controlled Auto, and a session-only hidden danger switch as
-   internal permission choices.
+   with two visible permission choices: Controlled Auto by default and a
+   session-only Danger Auto switch. Approval remains a hidden enforcement
+   fallback for raw actions and direct clients.
 7. Legacy Read-Only Project Advisor and Full-Agent remain only as compatibility
    aliases.
 
@@ -167,18 +174,20 @@ When opening this project in a new Codex thread:
 ## Current Open Questions
 
 - Should legacy Auto MCP remain package-only as a compatibility boundary?
-- How much default approval friction should Connected Agent keep before users
-  opt into the hidden danger switch?
 - What further status UI is needed beyond the compact fast-start card?
-- Should the next ChatGPT Web connector run verify only the legacy Auto MCP
-  path, or also run a current Connected Agent approval-gated test?
+- The next ChatGPT Web connector run should verify contract `2.1` and the
+  token-only `prepare_action -> commit_action` flow before spending time on the
+  legacy Auto MCP path.
 
 ## Default Answers Until Overridden
 
 - Use plain files first.
 - Use Markdown for human review and JSON only for task metadata.
 - Use Connected Agent for project-aware review and controlled execution; its
-  default internal mode asks once for every side effect.
+  default visible mode is Controlled Auto for previewed patches, immutable
+  prepared actions, and configured tasks. Bound patch/action commits use one
+  host-native confirmation in the ChatGPT helper; raw actions remain only as a
+  hidden-approval compatibility path.
 - Treat the hidden danger switch and deprecated full-access compatibility mode
   as explicit `5/5` risk whenever used.
 - Do not claim Codex has consulted GPT Pro unless a real advisor channel returned advice.

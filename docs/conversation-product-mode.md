@@ -96,10 +96,11 @@ Connected Agent
 - Do not create a decision package.
 - Use `--mode connected-agent`.
 - Let ChatGPT Web directly list/read/search allowed project content by default.
-- Tool contract `2.0` is derived from the live server schema. It includes the
-  deterministic open/read/search tools, metadata and previewed-patch tools,
-  locally allowlisted task tools, raw write/edit/bash, internal permission
-  controls, Danger Auto controls, and action/workspace approvals.
+- Tool contract `2.1` is derived from the live server schema. Its 25 tools
+  include deterministic open/read/search, immutable prepared-action commits,
+  metadata and previewed-patch tools, locally allowlisted tasks, legacy raw
+  write/edit/bash, internal permission controls, Danger Auto controls, and
+  action/workspace approvals.
 - Workspace opening is deterministic, not a user choice. When
   `open_default_workspace` is visible, ChatGPT calls it with no arguments. If
   the visible connector schema lacks that tool but exposes `open_workspace`,
@@ -116,13 +117,21 @@ Connected Agent
   files should use targeted `grep` plus bounded `read_lines` ranges. Default
   prompts should skip `node_modules`, build outputs, sourcemaps, image
   galleries, and dependency artifacts unless the task explicitly requires them.
-- Connected Agent starts in internal `approval` mode. Every side effect returns
-  `approval_id`; ChatGPT asks the user to approve that exact action, calls
-  `grant_action_approval`, and retries the same tool call once with that
-  `approval_id`.
-- `controlled_auto` is the recommended internal mode for continued execution:
-  it may apply only a stored `preview_patch` and run only a task returned by
-  `list_tasks`; raw write/edit/bash remain approval-gated.
+- Opening the Connected Agent second tier starts `controlled_auto`. It may
+  automatically apply a stored previewed patch, commit an immutable prepared
+  action, and run a task returned by `list_tasks`. For file creation, targeted
+  edit, or ordinary project-local bash, use
+  `prepare_action -> commit_action`; the commit carries only the workspace id
+  and single-use action id, never regenerated full arguments. Raw
+  write/edit/bash retain legacy hidden approval gates. Low-level direct clients
+  start in an internal server approval fallback, where apply/commit and run_task
+  also require approval; that fallback is not a user-facing mode. The bounded
+  ChatGPT session uses
+  `previewed_patch_confirmation=host_native_once`: after showing the diff,
+  `apply_patch` is called once with its bound, single-use `preview_id`, and the
+  native connector dialog is the only user confirmation. Prepared actions use
+  the equivalent `prepared_action_confirmation=host_native_once` behavior.
+  Direct clients default to the conservative server approval flow.
 - `dangerously trust connected agent` is a hidden danger switch inside
   Connected Agent, not an additional product mode.
 - The hidden switch starts only after the user types that exact phrase in
@@ -132,7 +141,7 @@ Connected Agent
   secret-path, and path escape remain hard-blocked; dependency install, Git
   remote, and broad destructive command classes remain separately
   approval-gated.
-- Risk `3/5-5/5`; the hidden switch is fixed `5/5`.
+- Risk `4/5-5/5`; the hidden switch is fixed `5/5`.
 - If advisor channel is unavailable, wait for `user-web` or browser automation
   authorization.
 
@@ -158,7 +167,7 @@ advisor state. In that case report:
 Current state: waiting_for_advisor_channel
 Requested mode: connected-agent
 Connected Agent session: not_open
-Risk if opened: 3/5-5/5
+Risk if opened: 4/5-5/5
 Reason: ChatGPT Web is not currently reachable as an advisor channel.
 Next options: restart/restore the browser, user triggers ChatGPT Web manually,
 or fall back to Ask First.
@@ -324,7 +333,7 @@ Use direct wording when the loop cannot be completed:
 Current state: waiting_for_advisor_channel
 Requested mode: connected-agent
 Connected Agent session: ready/not_open/failed
-Risk if opened: 3/5-5/5
+Risk if opened: 4/5-5/5
 Reason: Codex does not currently have a callable GPT Pro Web advisor channel.
 Next options: user triggers ChatGPT Web manually, authorize browser automation,
 or fall back to Ask First.

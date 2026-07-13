@@ -1,5 +1,115 @@
 # Update Notes
 
+## 2026-07-13: Token-Only Prepared Action Commits
+
+### What Changed
+
+- Released server `0.4.2` with a more precise `run_task` impact annotation.
+  Owner-configured checks remain non-read-only and host-confirmable, but are no
+  longer advertised as destructive. The server still blocks network, install,
+  privileged, Git remote, and destructive command classes and still accepts
+  only an exact task returned by `list_tasks`.
+- Kept Connected Agent contract `2.1` and all 25 tool names unchanged. Connector
+  hosts must refresh the app metadata or start a fresh conversation to observe
+  the updated annotation and description.
+- Released server `0.4.1` as a contract-preserving compatibility fix. Optional
+  root `path`/`cwd` values for `ls`, `grep`, prepared bash, and raw bash now
+  normalize omitted, null, or blank host serialization to `.`. Required file
+  paths remain non-empty and keep all traversal/protected-path checks.
+- Added explicit `default: "."` metadata for those optional schema fields so
+  Connector hosts have a deterministic root value. The tool contract remains
+  `2.1` with the same 25 tool names; no connector re-publication is required
+  for the server-side behavior fix.
+- Advanced the Connected Agent tool contract to `2.1` with 25 tools by adding
+  `prepare_action` and `commit_action`.
+- Replaced the normal Controlled Auto raw write/edit/bash approval replay with a
+  bound two-step flow. `prepare_action` validates and stores the complete
+  immutable action; `commit_action` carries only the same workspace id and an
+  expiring, single-use action id.
+- Extended the bounded ChatGPT session's host-native confirmation trust to the
+  write-annotated `commit_action`. The user sees one native connector dialog,
+  and the model does not regenerate file content, replacement text, or command
+  arguments after approval.
+- Kept direct HTTP/stdio clients conservative: their small token-only commit
+  call retains the hidden server one-action approval fallback.
+- Kept raw `write`, `edit`, and `bash` as legacy compatibility tools rather than
+  removing them from old clients.
+- Preserved protected-path, workspace, network/GUI/clipboard, dependency,
+  remote-Git, permission, and destructive-command boundaries. Prepared file
+  actions are base-state/hash-bound, and prepared bash accepts only ordinary
+  project-local commands.
+- Updated the OAuth authorization warning to describe the bounded host-native
+  commit path separately from legacy raw write/edit/bash approval.
+
+### Validation
+
+- Added regression coverage for write/create, edit, and bash prepared commits;
+  token replay, expiry, cross-workspace use, file drift, direct-client fallback,
+  protected paths, high-risk commands, HTTP wiring, and MCP annotations.
+- Targeted Connected Agent suite: `91 tests OK`.
+- Full Python suite in an isolated working-tree copy: `207 tests OK`.
+- Repository Skill validation: `Skill is valid!`.
+
+## 2026-07-13: Two Visible Connected Agent Permission Choices
+
+### What Changed
+
+- Simplified the user-facing Connected Agent permission model to two choices:
+  `controlled_auto` by default and the explicit `danger_auto` switch.
+- Treated the user's act of opening the bounded second-tier session as consent
+  for Controlled Auto. Only previewed patches and owner-configured tasks become
+  automatic.
+- Kept Approval as a hidden enforcement fallback rather than a visible mode:
+  raw write/edit/bash still require one-action approval, workspace expansion
+  remains separately approved, and direct HTTP/stdio clients remain conservative.
+- Made Danger Auto disable and idle expiry return to the session's base mode;
+  product sessions return to Controlled Auto, direct fallback sessions return
+  to Approval.
+- Made the session helper detect stale or mismatched permission configuration,
+  close the old session, and reopen it with the requested default instead of
+  silently reusing an older Approval process.
+- Updated the default online risk label to `4/5-5/5`; Danger Auto remains `5/5`.
+- Kept all 23 tool names and the `2.0` contract identifier stable while narrowing
+  the visible `set_permission_mode` schema to `controlled_auto`.
+- Added explicit MCP annotations to all 23 tools so read/search/status operations
+  are not misclassified as writes, while file, command, and permission mutations
+  remain host-confirmable operations.
+- Synchronized the repository's versioned `agent-decision-bridge` Skill and eval
+  cases with the two-choice model. The installed runtime Skill remains a separate
+  promotion step under the project's explicit-confirmation policy.
+
+### Validation
+
+- Added regression coverage for the product-session default, hidden direct-client
+  fallback, Danger Auto return mode, visible-mode metadata, 23-tool schema, and
+  read/write annotations.
+- Targeted Connected Agent suite: `120 tests OK`.
+- Full Python suite: `200 tests OK`.
+- Repository Skill validation: `Skill is valid!`.
+
+## 2026-07-13: Single Native Confirmation For Previewed Patches
+
+### What Changed
+
+- Kept direct MCP clients conservative: `apply_patch` still uses the server's
+  one-action `approval_id` flow unless the session owner explicitly enables host
+  confirmation trust.
+- Made the bounded ChatGPT session helper enable that trust by default. After
+  `preview_patch` shows the diff, ChatGPT's native write confirmation is the sole
+  user prompt and `apply_patch` is called once with the single-use `preview_id`.
+- Bound the commit token to workspace, path, base/result hashes, diff, expiry,
+  and single use; stale files, cross-workspace use, and replay remain rejected.
+- Added explicit read/write MCP annotations for `preview_patch` and `apply_patch`.
+- Left raw `write`, `edit`, `bash`, `run_task`, workspace expansion, protected
+  paths, and high-risk command gates unchanged.
+
+### Validation
+
+- Added regression coverage for host-confirmed commits, default direct-client
+  approval, cross-workspace rejection, stale-file rejection, replay rejection,
+  raw-write approval retention, HTTP wiring, session defaults, and MCP annotations.
+- Full Python suite: `194 tests OK`.
+
 ## 2026-07-13: Codex Chat Dialog Terminology Correction
 
 ### What Changed
@@ -21,8 +131,9 @@
 - Kept the public product model at two tiers: **Ask First** and **Connected
   Agent**. Added three clearly nested permission choices inside Connected
   Agent: `approval`, `controlled_auto`, and `danger_auto`.
-- Made `approval` the default: every side effect uses the existing single-use
-  `approval_id` flow.
+- Made `approval` the default: raw side effects use the existing single-use
+  `approval_id` flow. The later native-confirmation refinement applies only to
+  an already previewed `apply_patch` in an explicitly configured host session.
 - Added `file_info`, `preview_patch`, and `apply_patch`. A patch is bound to the
   current file hash, stored server-side, expires, and can be applied only once.
 - Added `list_tasks` and `run_task`. Only exact commands configured by the local

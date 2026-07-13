@@ -55,7 +55,7 @@ class ConnectedAgentConsultationFlowTests(unittest.TestCase):
         self.assertEqual(run.call_count, 3)
         output = stdout.getvalue()
         self.assertIn("Current state: connected_agent_flow_ready_for_advisor", output)
-        self.assertIn("Risk while online: 3/5-5/5", output)
+        self.assertIn("Risk while online: 4/5-5/5", output)
         self.assertIn("Speed profile: fast", output)
         self.assertIn("Public health: stable preflight_passed=3/3", output)
         self.assertIn("ChatGPT Web setup", output)
@@ -94,7 +94,7 @@ class ConnectedAgentConsultationFlowTests(unittest.TestCase):
         run.assert_not_called()
         output = stdout.getvalue()
         self.assertIn("waiting_for_advisor_channel", output)
-        self.assertIn("Risk while online: 3/5-5/5", output)
+        self.assertIn("Risk while online: 4/5-5/5", output)
         self.assertIn("GPT Pro has not been consulted yet", output)
 
     def test_prepare_waits_when_advisor_channel_not_ready(self):
@@ -338,7 +338,7 @@ class ConnectedAgentConsultationFlowTests(unittest.TestCase):
         stdout = StringIO()
         results = [
             completed("Current state: review_only\nCaptured advice.\n"),
-            completed("Current state: connected_agent_session_touched\nRisk coefficient while open: 3/5-5/5\n"),
+            completed("Current state: connected_agent_session_touched\nRisk coefficient while open: 4/5-5/5\n"),
         ]
 
         with mock.patch.object(flow.sys, "stdin", StringIO("Adopt: keep user-web.\n")):
@@ -367,7 +367,7 @@ class ConnectedAgentConsultationFlowTests(unittest.TestCase):
         output = stdout.getvalue()
         self.assertIn("Current state: connected_agent_flow_review_ready", output)
         self.assertIn("Idle window refresh:", output)
-        self.assertIn("Risk after capture: 3/5-5/5 until idle shutdown closes the session", output)
+        self.assertIn("Risk after capture: 4/5-5/5 until idle shutdown closes the session", output)
         self.assertIn("Idle shutdown: 1200 seconds after last Connected Agent use", output)
         self.assertIn("Next step: classify captured advice", output)
 
@@ -404,7 +404,7 @@ class ConnectedAgentConsultationFlowTests(unittest.TestCase):
         stdout = StringIO()
         results = [
             completed("", returncode=1),
-            completed("Current state: connected_agent_session_touched\nRisk coefficient while open: 3/5-5/5\n"),
+            completed("Current state: connected_agent_session_touched\nRisk coefficient while open: 4/5-5/5\n"),
         ]
 
         with mock.patch.object(flow.sys, "stdin", StringIO("")):

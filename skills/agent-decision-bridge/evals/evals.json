@@ -5,7 +5,7 @@
       "id": 0,
       "name": "two-tier-plain-language-routing",
       "prompt": "我们不是只有第一档和第二档吗？第二档想让它像 Codex 一样受控执行。",
-      "expected_output": "明确只有 Ask First 和 Connected Agent 两个产品档位，并把 approval、controlled_auto、danger_auto 解释为第二档内部权限选择。",
+      "expected_output": "明确只有 Ask First 和 Connected Agent 两个产品档位；第二档默认进入 controlled_auto，只有 controlled_auto 和 danger_auto 两个用户选择，approval 仅是隐藏安全兜底。",
       "files": [],
       "assertions": [
         {
@@ -56,8 +56,8 @@
     {
       "id": 3,
       "name": "controlled-auto-boundary",
-      "prompt": "我确认启用受控自动，帮我改文件并跑测试。",
-      "expected_output": "使用 file_info、preview_patch、apply_patch 和 list_tasks、run_task；不把 raw write/edit/bash 变为自动。",
+      "prompt": "打开第二档，帮我改文件并跑测试。",
+      "expected_output": "默认进入 controlled_auto；已有文件可用 file_info、preview_patch、apply_patch，新建/编辑/普通本地命令使用 prepare_action、commit_action，检查使用 list_tasks、run_task；不走 raw 参数重放。",
       "files": [],
       "assertions": [
         {
@@ -74,9 +74,9 @@
     },
     {
       "id": 4,
-      "name": "approval-id-single-action",
-      "prompt": "连接器返回了 approval_id，接下来怎么办？",
-      "expected_output": "展示准确动作、影响、风险和 approval_id，等待当前用户明确批准，grant 后只重试原调用一次。",
+      "name": "prepared-action-single-token",
+      "prompt": "Controlled Auto 要新建文件，怎样避免批准后重新发送整段 content？",
+      "expected_output": "使用 prepare_action 保存不可变动作并展示结果，再用相同 workspace_id 和单次 action_id 调用 commit_action；host_native_once 下不调用 grant_action_approval，也不重发 content。",
       "files": [],
       "assertions": [
         {

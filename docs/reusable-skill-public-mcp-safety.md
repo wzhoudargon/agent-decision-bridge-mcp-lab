@@ -105,11 +105,12 @@ explicit --allowed-root
 persistent OAuth state by default
 session-window lifecycle preferred
 auto-close after 20 minutes idle
-risk coefficient while active: 3/5-5/5
+risk coefficient while active: 4/5-5/5
 hidden danger switch risk coefficient: 5/5
 OAuth scope: connected-agent
-tools: open_default_workspace, open_workspace, ls, read, read_lines, file_info,
-       preview_patch, apply_patch, list_tasks, run_task, write, edit, grep, glob, bash,
+tools: open_default_workspace, open_workspace, ls, read, read_lines,
+       prepare_action, commit_action, file_info, preview_patch, apply_patch,
+       list_tasks, run_task, write, edit, grep, glob, bash,
        set_permission_mode, permission_mode_status,
        enable_danger_auto, danger_auto_status, disable_danger_auto,
        grant_action_approval, request_workspace_access, grant_workspace_access
@@ -190,12 +191,19 @@ Connector profile rule:
 
 - Ask First uses package files and does not need a workspace connector.
 - Connected Agent uses the `connected-agent` scope and one workspace connector.
-- Connected Agent approval mode allows read/search/list and uses one-action
-  approval before every side effect: the tool returns `approval_id`, the user
-  approves the exact action in chat, then ChatGPT calls `grant_action_approval`
-  and retries the same action once.
-- Controlled Auto is limited to stored patch previews and locally configured
-  exact tasks; it does not make raw write/edit/bash automatic.
+- Opening the second tier through the product helper starts Controlled Auto.
+  It is limited to stored patch previews, immutable prepared actions, and
+  locally configured exact tasks; it does not make legacy raw write/edit/bash
+  automatic.
+- For file creation, targeted edit, or ordinary local bash, the bounded flow is
+  `prepare_action -> commit_action`. The server stores the full payload and the
+  commit carries only a workspace id and expiring, single-use action id.
+- Raw actions retain hidden one-action approval gates. Low-level direct clients
+  start in the internal server approval fallback, where apply/commit and
+  run_task also require approval. The fallback is not a user-facing mode.
+- A bounded ChatGPT session uses one host-native confirmation for a bound
+  previewed patch or prepared action. The preview/action id remains single-use,
+  expiring, and bound to the exact stored operation.
 - `dangerously trust connected agent` is not a separate connector or product
   mode. It is a session-only hidden danger switch inside Connected Agent,
   enabled only after the user types that exact phrase, and is always risk
