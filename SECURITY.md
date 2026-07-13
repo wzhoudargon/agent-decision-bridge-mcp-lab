@@ -27,4 +27,3 @@ Do not store or report:
 Open a GitHub issue for security-relevant behavior without including sensitive
 data. If the report requires private details, first open a minimal issue asking
 for a private disclosure channel.
-
