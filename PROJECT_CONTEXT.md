@@ -32,10 +32,12 @@ There are two current product modes that must not be confused:
      and cloud credential directories, private-key material, and known
      token/OAuth state files.
    - Other task-relevant project files can be selected by the web advisor.
-   - It can request writes, edits, and bash under allowed roots.
-   - Default mode uses one-action approval for write, edit, and bash:
+   - It is a controlled project executor inside allowed roots.
+   - Internal approval mode uses one-action approval for every side effect:
      return `approval_id`, confirm that exact action in chat, call
      `grant_action_approval`, then retry once with the same `approval_id`.
+   - Internal Controlled Auto may apply only a stored previewed patch and run
+     only an exact locally configured task; raw write/edit/bash still ask.
    - The hidden danger switch starts only after the user types
      `dangerously trust connected agent`; it is session-only and fixed risk
      `5/5`.
@@ -100,8 +102,9 @@ Instead, keep this as a separate lab project:
 3. Build Decision Inbox MCP v1. Local and ChatGPT Web external connector verification complete.
 4. Run an end-to-end decision package loop. Complete with a synthetic package-only advisor round.
 5. Keep Ask First as the safest mode.
-6. Connected Agent is implemented as the project-aware mode with approval
-   gates and a session-only hidden danger switch.
+6. Connected Agent is implemented as the project-aware controlled executor
+   with approval, Controlled Auto, and a session-only hidden danger switch as
+   internal permission choices.
 7. Legacy Read-Only Project Advisor and Full-Agent remain only as compatibility
    aliases.
 
@@ -174,8 +177,8 @@ When opening this project in a new Codex thread:
 
 - Use plain files first.
 - Use Markdown for human review and JSON only for task metadata.
-- Use Connected Agent for project-aware review; default write/edit/bash use
-  one-action approval.
+- Use Connected Agent for project-aware review and controlled execution; its
+  default internal mode asks once for every side effect.
 - Treat the hidden danger switch and deprecated full-access compatibility mode
   as explicit `5/5` risk whenever used.
 - Do not claim Codex has consulted GPT Pro unless a real advisor channel returned advice.

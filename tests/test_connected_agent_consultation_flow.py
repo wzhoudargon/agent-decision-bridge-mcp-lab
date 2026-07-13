@@ -280,6 +280,26 @@ class ConnectedAgentConsultationFlowTests(unittest.TestCase):
         self.assertNotIn("--clipboard", command)
         self.assertIn("Review readiness.", command)
 
+    def test_build_open_command_forwards_controlled_auto_tasks(self):
+        args = flow.parse_args(
+            [
+                "prepare",
+                "--allowed-root",
+                "/tmp/example-project",
+                "--public-base-url",
+                "https://example.test",
+                "--allowed-task",
+                "test=python3 -m unittest",
+                "Review readiness.",
+            ]
+        )
+        flow.apply_speed_profile(args)
+
+        command = flow.build_open_command(args)
+
+        self.assertIn("--allowed-task", command)
+        self.assertIn("test=python3 -m unittest", command)
+
     def test_prepare_closes_when_prompt_generation_fails(self):
         stdout = StringIO()
         results = [

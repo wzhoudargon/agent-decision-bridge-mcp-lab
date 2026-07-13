@@ -91,6 +91,11 @@ connector to list, search, and read task-relevant files inside the allowed
 project root. It returns advice. Codex imports that advice and checks it
 against local facts before any action is taken.
 
+In plain language, Connected Agent is a **controlled project executor**. It can
+understand the project, propose a precise change, show what will change, apply
+the approved change, and run preconfigured checks. It is not unrestricted
+remote control of the computer.
+
 Risk while online: `3/5-5/5`.
 
 Best for:
@@ -180,7 +185,10 @@ python3 scripts/connected_agent_flow.py close
 Default Connected Agent behavior:
 
 - read, list, and search are allowed inside the opened allowed root,
-- writes, edits, and bash requests use one-action approval by default,
+- every side effect asks once in the default internal permission mode,
+- the recommended Controlled Auto mode can automatically apply only a change
+  already shown by `preview_patch`, or run an exact task returned by `list_tasks`,
+- raw `write`, `edit`, and `bash` still ask in Controlled Auto,
 - high-risk credential paths are blocked by the server,
 - external advice is never authorization,
 - Codex keeps local verification and execution control.
@@ -197,6 +205,20 @@ Hard-blocked or approval-gated categories include:
 The hidden phrase `dangerously trust connected agent` is not a product mode. It
 is a session-local high-risk switch inside Connected Agent. It remains fixed
 risk `5/5` and does not remove the server-side hard blocks.
+
+### The three permission choices inside Connected Agent
+
+These are three ways to operate the second tier, not three product tiers:
+
+1. **Approval**: safest and default. Reading is automatic; every file change or
+   command shows the exact action and asks you once.
+2. **Controlled Auto**: recommended when you want it to keep working. It may
+   apply only a file change that was previewed and may run only a task you
+   configured when starting the connector. General writes and shell commands
+   still ask.
+3. **Danger Auto**: hidden expert switch at risk `5/5`. It allows more local
+   automation but does not unlock secrets, networking, clipboard, desktop
+   control, or paths outside the project.
 
 ## User Handoff Text
 

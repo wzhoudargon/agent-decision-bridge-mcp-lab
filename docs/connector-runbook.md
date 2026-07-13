@@ -324,7 +324,8 @@ python3 server/decision_inbox_http_server.py \
   --mode connected-agent \
   --host 127.0.0.1 \
   --port 8765 \
-  --allowed-root "$HOME/work/my-project"
+  --allowed-root "$HOME/work/my-project" \
+  --allowed-task "test=python3 -m unittest discover -s tests"
 ```
 
 Expected tools:
@@ -335,11 +336,18 @@ open_workspace
 ls
 read
 read_lines
+file_info
+preview_patch
+apply_patch
+list_tasks
+run_task
 write
 edit
 grep
 glob
 bash
+set_permission_mode
+permission_mode_status
 enable_danger_auto
 danger_auto_status
 disable_danger_auto
@@ -367,11 +375,16 @@ Default behavior:
   `grep` plus bounded `read_lines` ranges for larger source files,
 - default prompts should skip `node_modules`, build outputs, sourcemaps, image
   galleries, and dependency artifacts unless the task explicitly requires them,
-- write/edit/bash return a one-action `approval_id`; after the user approves
+- internal permission mode starts at `approval`; every side effect returns a
+  one-action `approval_id`; after the user approves
   that exact action in chat, call `grant_action_approval` and retry the
   original tool call once with that `approval_id`,
+- `controlled_auto` requires clear user confirmation and automates only an
+  unexpired `preview_patch` result or an exact task returned by `list_tasks`;
+  raw write/edit/bash still ask,
 - outside roots require `request_workspace_access` and then
-  `grant_workspace_access` after the user confirms in chat.
+  `grant_workspace_access`; the grant itself always completes a single-use
+  approval flow, even in Controlled Auto or Danger Auto.
 
 Hidden danger switch:
 

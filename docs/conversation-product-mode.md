@@ -96,10 +96,10 @@ Connected Agent
 - Do not create a decision package.
 - Use `--mode connected-agent`.
 - Let ChatGPT Web directly list/read/search allowed project content by default.
-- Tools include `open_default_workspace`, `open_workspace`, `ls`, `read`,
-  `read_lines`, `write`, `edit`, `grep`, `glob`, `bash`, `enable_danger_auto`, `danger_auto_status`,
-  `disable_danger_auto`, `grant_action_approval`, `request_workspace_access`, and
-  `grant_workspace_access`.
+- Tool contract `2.0` is derived from the live server schema. It includes the
+  deterministic open/read/search tools, metadata and previewed-patch tools,
+  locally allowlisted task tools, raw write/edit/bash, internal permission
+  controls, Danger Auto controls, and action/workspace approvals.
 - Workspace opening is deterministic, not a user choice. When
   `open_default_workspace` is visible, ChatGPT calls it with no arguments. If
   the visible connector schema lacks that tool but exposes `open_workspace`,
@@ -116,18 +116,22 @@ Connected Agent
   files should use targeted `grep` plus bounded `read_lines` ranges. Default
   prompts should skip `node_modules`, build outputs, sourcemaps, image
   galleries, and dependency artifacts unless the task explicitly requires them.
-- Write, edit, and bash use one-action approval by default: the tool returns
-  `approval_id`, ChatGPT asks the user to approve that exact action, calls
+- Connected Agent starts in internal `approval` mode. Every side effect returns
+  `approval_id`; ChatGPT asks the user to approve that exact action, calls
   `grant_action_approval`, and retries the same tool call once with that
   `approval_id`.
+- `controlled_auto` is the recommended internal mode for continued execution:
+  it may apply only a stored `preview_patch` and run only a task returned by
+  `list_tasks`; raw write/edit/bash remain approval-gated.
 - `dangerously trust connected agent` is a hidden danger switch inside
   Connected Agent, not an additional product mode.
 - The hidden switch starts only after the user types that exact phrase in
   ChatGPT Web.
 - When the hidden switch is active, safe project-local write/edit and safe
   local bash may run automatically; network, browser/desktop, clipboard,
-  secret-path, path escape, dependency install, Git remote, and broad
-  destructive command classes are blocked or require approval.
+  secret-path, and path escape remain hard-blocked; dependency install, Git
+  remote, and broad destructive command classes remain separately
+  approval-gated.
 - Risk `3/5-5/5`; the hidden switch is fixed `5/5`.
 - If advisor channel is unavailable, wait for `user-web` or browser automation
   authorization.

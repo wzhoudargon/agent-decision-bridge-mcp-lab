@@ -2,9 +2,11 @@
 """Connected Agent MCP backend with explicit workspace roots and approval gates."""
 
 import argparse
+import difflib
 import hashlib
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -16,7 +18,8 @@ from typing import Any, Dict, Iterable, List, Optional
 
 PROTOCOL_VERSION = "2025-11-25"
 SERVER_NAME = "agent-decision-bridge-connected-agent"
-SERVER_VERSION = "0.1.0"
+SERVER_VERSION = "0.2.0"
+TOOL_CONTRACT_VERSION = "2.0"
 MAX_COMMAND_SECONDS = 30
 MAX_COMMAND_OUTPUT_BYTES = 200_000
 MAX_READ_FILE_BYTES = 1_000_000
@@ -28,6 +31,16 @@ VALID_PROFILES = {PROFILE_FULL_AGENT, PROFILE_READ_ONLY_PROJECT, PROFILE_CONNECT
 DANGER_AUTO_PHRASE = "dangerously trust connected agent"
 DANGER_AUTO_IDLE_SECONDS = 1200
 ACTION_APPROVAL_IDLE_SECONDS = 1200
+PATCH_PREVIEW_IDLE_SECONDS = 1200
+PERMISSION_APPROVAL = "approval"
+PERMISSION_CONTROLLED_AUTO = "controlled_auto"
+PERMISSION_DANGER_AUTO = "danger_auto"
+VALID_PERMISSION_MODES = {
+    PERMISSION_APPROVAL,
+    PERMISSION_CONTROLLED_AUTO,
+    PERMISSION_DANGER_AUTO,
+}
+CONTROLLED_AUTO_TOOLS = {"apply_patch", "run_task"}
 APPROVAL_CONFIRMATION_MARKERS = (
     "确认",
     "同意",
@@ -176,50 +189,51 @@ class WorkspaceNotFound(Exception):
 
 
 class FullAgentWorkspaceManager:
-    def __init__(self, allowed_roots: List[Path], profile: str = PROFILE_FULL_AGENT):
+    def __init__(
+        self,
+        allowed_roots: List[Path],
+        profile: str = PROFILE_FULL_AGENT,
+        allowed_tasks: Optional[Dict[str, str]] = None,
+    ):
         if profile not in VALID_PROFILES:
             raise ValueError(f"Unknown workspace profile: {profile}")
         self.profile = profile
         self.allowed_roots = validate_allowed_roots(allowed_roots)
+        self.allowed_tasks = validate_allowed_tasks(allowed_tasks or {})
         self.session_allowed_roots: List[Path] = []
         self.workspaces: Dict[str, Path] = {}
-        self.danger_auto_enabled = False
+        self.permission_mode = PERMISSION_APPROVAL
         self.session_last_activity = time.time()
         self.pending_action_approvals: Dict[str, Dict[str, Any]] = {}
         self.granted_action_approvals: Dict[str, Dict[str, Any]] = {}
+        self.pending_patch_previews: Dict[str, Dict[str, Any]] = {}
+
+    @property
+    def danger_auto_enabled(self) -> bool:
+        """Backward-compatible view of the session permission mode."""
+        return self.permission_mode == PERMISSION_DANGER_AUTO
+
+    @danger_auto_enabled.setter
+    def danger_auto_enabled(self, enabled: bool) -> None:
+        self.permission_mode = (
+            PERMISSION_DANGER_AUTO if enabled else PERMISSION_APPROVAL
+        )
 
     @property
     def risk_level(self) -> str:
         if self.profile == PROFILE_FULL_AGENT:
             return "5/5"
         if self.profile == PROFILE_CONNECTED_AGENT:
-            return "5/5" if self.danger_auto_enabled else "3/5-5/5"
+            if self.permission_mode == PERMISSION_DANGER_AUTO:
+                return "5/5"
+            if self.permission_mode == PERMISSION_CONTROLLED_AUTO:
+                return "4/5-5/5"
+            return "3/5-5/5"
         return "3/5-4/5"
 
     @property
     def tool_names(self) -> List[str]:
-        if self.profile == PROFILE_READ_ONLY_PROJECT:
-            return ["open_workspace", "ls", "read", "read_lines", "grep", "glob"]
-        if self.profile == PROFILE_CONNECTED_AGENT:
-            return [
-                "open_default_workspace",
-                "open_workspace",
-                "ls",
-                "read",
-                "read_lines",
-                "write",
-                "edit",
-                "grep",
-                "glob",
-                "bash",
-                "enable_danger_auto",
-                "danger_auto_status",
-                "disable_danger_auto",
-                "grant_action_approval",
-                "request_workspace_access",
-                "grant_workspace_access",
-            ]
-        return ["open_workspace", "ls", "read", "read_lines", "write", "edit", "grep", "glob", "bash"]
+        return [tool["name"] for tool in tool_definitions(self.profile)]
 
     def open_default_workspace(self) -> Dict[str, Any]:
         self.touch()
@@ -248,7 +262,9 @@ class FullAgentWorkspaceManager:
         elif self.profile == PROFILE_CONNECTED_AGENT:
             warning = (
                 "Connected Agent exposes project read/search tools by default. "
-                "Write, edit, and bash require one-action approval by default. "
+                "It starts in approval mode, where side effects require one-action "
+                "approval. Controlled Auto may run only previewed patches and "
+                "owner-configured tasks automatically. "
                 "Protected credential-like paths and unsafe commands are blocked "
                 "by the server."
             )
@@ -264,6 +280,9 @@ class FullAgentWorkspaceManager:
             "workspace_id": workspace_id,
             "root": str(requested),
             "profile": self.profile,
+            "contract_version": TOOL_CONTRACT_VERSION,
+            "permission_mode": self.permission_mode,
+            "tools": self.tool_names,
             "risk_level": self.risk_level,
             "warning": warning,
         }
@@ -331,6 +350,130 @@ class FullAgentWorkspaceManager:
             "max_lines": MAX_READ_LINES,
             "truncated": requested_end > capped_end,
             "lines": lines,
+        }
+
+    def file_info(self, workspace_id: str, path_value: str) -> Dict[str, Any]:
+        """Return stable metadata that can be used for optimistic write checks."""
+        self.touch()
+        target = self.resolve_workspace_path(workspace_id, path_value, must_exist=True)
+        self._assert_not_protected(target)
+        relative = self.relative_path(workspace_id, target)
+        stat = target.stat()
+        result: Dict[str, Any] = {
+            "path": relative,
+            "type": "directory" if target.is_dir() else "file",
+            "bytes": stat.st_size if target.is_file() else None,
+            "modified_at_unix": stat.st_mtime,
+            "sha256": None,
+        }
+        if target.is_file():
+            if stat.st_size > MAX_READ_FILE_BYTES:
+                raise AccessDenied("file_info target is too large for content hashing")
+            try:
+                content = target.read_text(encoding="utf-8")
+            except UnicodeDecodeError as exc:
+                raise AccessDenied("file_info target must be a UTF-8 text file") from exc
+            result["sha256"] = _sha256_text(content)
+        return result
+
+    def preview_patch(
+        self,
+        workspace_id: str,
+        path_value: str,
+        new_content: str,
+        expected_sha256: str,
+    ) -> Dict[str, Any]:
+        """Build a single-use whole-file patch preview without changing the file."""
+        self.touch()
+        self._require_connected_agent_tool("preview_patch")
+        self._expire_patch_previews()
+        target = self.resolve_workspace_path(workspace_id, path_value, must_exist=True)
+        if not target.is_file():
+            raise AccessDenied("preview_patch target must be an existing file")
+        self._assert_not_protected(target)
+        if target.stat().st_size > MAX_READ_FILE_BYTES:
+            raise AccessDenied("preview_patch target is too large")
+        if len(new_content.encode("utf-8")) > MAX_READ_FILE_BYTES:
+            raise AccessDenied("preview_patch result is too large")
+        original = target.read_text(encoding="utf-8")
+        base_sha256 = _sha256_text(original)
+        if expected_sha256.strip().lower() != base_sha256:
+            raise AccessDenied(
+                "expected_sha256 does not match the current file; read file_info and preview again"
+            )
+        if original == new_content:
+            raise ValueError("preview_patch contains no changes")
+        relative = self.relative_path(workspace_id, target)
+        diff = "".join(
+            difflib.unified_diff(
+                original.splitlines(keepends=True),
+                new_content.splitlines(keepends=True),
+                fromfile=f"a/{relative}",
+                tofile=f"b/{relative}",
+            )
+        )
+        preview_id = f"patch-{uuid.uuid4().hex}"
+        result_sha256 = _sha256_text(new_content)
+        self.pending_patch_previews[preview_id] = {
+            "preview_id": preview_id,
+            "workspace_id": workspace_id,
+            "path": relative,
+            "base_sha256": base_sha256,
+            "result_sha256": result_sha256,
+            "new_content": new_content,
+            "diff": diff,
+            "created_at": time.time(),
+        }
+        return {
+            "preview_id": preview_id,
+            "path": relative,
+            "base_sha256": base_sha256,
+            "result_sha256": result_sha256,
+            "diff": diff,
+            "expires_after_idle_seconds": PATCH_PREVIEW_IDLE_SECONDS,
+            "applied": False,
+        }
+
+    def apply_patch(
+        self,
+        workspace_id: str,
+        preview_id: str,
+        approval_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Apply exactly one previously previewed result after policy checks."""
+        self.touch()
+        self._require_connected_agent_tool("apply_patch")
+        self._expire_patch_previews()
+        preview = self.pending_patch_previews.get(preview_id)
+        if not preview:
+            raise AccessDenied("preview_id is unknown, expired, or already used")
+        if preview["workspace_id"] != workspace_id:
+            raise AccessDenied("preview_id does not belong to this workspace")
+        target = self.resolve_workspace_path(workspace_id, preview["path"], must_exist=True)
+        self._assert_not_protected(target)
+        current = target.read_text(encoding="utf-8")
+        if _sha256_text(current) != preview["base_sha256"]:
+            raise AccessDenied("file changed after preview; create a new preview before applying")
+        action = {
+            "tool_name": "apply_patch",
+            "workspace_id": workspace_id,
+            "preview_id": preview_id,
+            "path": preview["path"],
+            "base_sha256": preview["base_sha256"],
+            "result_sha256": preview["result_sha256"],
+            "diff_sha256": _sha256_text(preview["diff"]),
+            "diff": preview["diff"],
+        }
+        self._require_connected_action_approval("apply_patch", action, approval_id)
+        new_content = preview["new_content"]
+        target.write_text(new_content, encoding="utf-8")
+        del self.pending_patch_previews[preview_id]
+        return {
+            "preview_id": preview_id,
+            "path": preview["path"],
+            "bytes": len(new_content.encode("utf-8")),
+            "sha256": preview["result_sha256"],
+            "applied": True,
         }
 
     def write_file(
@@ -454,7 +597,7 @@ class FullAgentWorkspaceManager:
             raise AccessDenied("bash cwd must be a directory")
         self._assert_not_protected(cwd_path)
         if self.profile == PROFILE_CONNECTED_AGENT:
-            self._assert_connected_bash_allowed(command)
+            forced_approval_reason = self._assert_connected_bash_allowed(command)
             action = {
                 "tool_name": "bash",
                 "workspace_id": workspace_id,
@@ -462,7 +605,13 @@ class FullAgentWorkspaceManager:
                 "command": command,
                 "timeout_seconds": timeout,
             }
-            self._require_connected_action_approval("bash", action, approval_id)
+            self._require_connected_action_approval(
+                "bash",
+                action,
+                approval_id,
+                force=forced_approval_reason is not None,
+                reason=forced_approval_reason,
+            )
         else:
             self._assert_bash_command_allowed(command)
         completed = subprocess.run(
@@ -483,6 +632,120 @@ class FullAgentWorkspaceManager:
             "risk_level": "5/5",
         }
 
+    def list_tasks(self, workspace_id: str) -> Dict[str, Any]:
+        """List commands explicitly allowlisted by the local session owner."""
+        self.touch()
+        self._require_connected_agent_tool("list_tasks")
+        self.workspace(workspace_id)
+        return {
+            "tasks": [
+                {"name": name, "command": command, "cwd": "."}
+                for name, command in sorted(self.allowed_tasks.items())
+            ],
+            "count": len(self.allowed_tasks),
+            "source": "local_session_configuration",
+        }
+
+    def run_task(
+        self,
+        workspace_id: str,
+        task_name: str,
+        approval_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Run one exact owner-configured task; arbitrary arguments are not accepted."""
+        self.touch()
+        self._require_connected_agent_tool("run_task")
+        command = self.allowed_tasks.get(task_name)
+        if command is None:
+            raise AccessDenied("task_name is not in the local session allowlist")
+        forced_reason = self._assert_connected_bash_allowed(command)
+        if forced_reason:
+            raise AccessDenied(
+                "owner-configured tasks must not contain destructive, install, privileged, "
+                f"or Git remote operations: {forced_reason}"
+            )
+        workspace = self.workspace(workspace_id)
+        action = {
+            "tool_name": "run_task",
+            "workspace_id": workspace_id,
+            "task_name": task_name,
+            "command": command,
+            "cwd": ".",
+        }
+        self._require_connected_action_approval("run_task", action, approval_id)
+        completed = subprocess.run(
+            command,
+            cwd=workspace,
+            shell=True,
+            text=True,
+            capture_output=True,
+            timeout=MAX_COMMAND_SECONDS,
+        )
+        stdout = completed.stdout.encode("utf-8", errors="replace")[:MAX_COMMAND_OUTPUT_BYTES]
+        stderr = completed.stderr.encode("utf-8", errors="replace")[:MAX_COMMAND_OUTPUT_BYTES]
+        return {
+            "task_name": task_name,
+            "command": command,
+            "cwd": ".",
+            "returncode": completed.returncode,
+            "stdout": stdout.decode("utf-8", errors="replace"),
+            "stderr": stderr.decode("utf-8", errors="replace"),
+            "permission_mode": self.permission_mode,
+        }
+
+    def set_permission_mode(self, mode: str, confirmation: str = "") -> Dict[str, Any]:
+        """Select approval or controlled-auto mode for this Connected Agent session."""
+        self._require_connected_agent_tool("set_permission_mode")
+        self.touch()
+        normalized = mode.strip().lower()
+        if normalized not in {PERMISSION_APPROVAL, PERMISSION_CONTROLLED_AUTO}:
+            raise AccessDenied(
+                "set_permission_mode accepts approval or controlled_auto only; "
+                "Danger Auto requires its separate exact-phrase tool"
+            )
+        if normalized == PERMISSION_CONTROLLED_AUTO and not _looks_like_affirmative_confirmation(
+            confirmation
+        ):
+            raise AccessDenied(
+                "controlled_auto requires a clear affirmative confirmation from the user"
+            )
+        self.permission_mode = normalized
+        self.session_last_activity = time.time()
+        return self.permission_mode_status()
+
+    def permission_mode_status(self) -> Dict[str, Any]:
+        self._require_connected_agent_tool("permission_mode_status")
+        self._expire_idle_session()
+        remaining = max(
+            0,
+            int(DANGER_AUTO_IDLE_SECONDS - (time.time() - self.session_last_activity)),
+        )
+        return {
+            "profile": self.profile,
+            "permission_mode": self.permission_mode,
+            "risk_level": self.risk_level,
+            "automatic_tools": (
+                sorted(CONTROLLED_AUTO_TOOLS)
+                if self.permission_mode == PERMISSION_CONTROLLED_AUTO
+                else (
+                    ["write", "edit", "apply_patch", "bash", "run_task"]
+                    if self.permission_mode == PERMISSION_DANGER_AUTO
+                    else []
+                )
+            ),
+            "raw_write_edit_bash_require_approval": self.permission_mode
+            != PERMISSION_DANGER_AUTO,
+            "hard_blocks_remain": [
+                "protected credential paths",
+                "network commands",
+                "browser, desktop, and clipboard commands",
+                "out-of-workspace paths",
+            ],
+            "idle_timeout_seconds": DANGER_AUTO_IDLE_SECONDS,
+            "seconds_until_idle_close": remaining,
+            "configured_tasks": sorted(self.allowed_tasks),
+        }
+
     def enable_danger_auto(self, phrase: str) -> Dict[str, Any]:
         self._require_connected_agent_tool("enable_danger_auto")
         self.touch()
@@ -490,30 +753,32 @@ class FullAgentWorkspaceManager:
             raise AccessDenied(
                 "Danger Auto phrase was not accepted. The user must type the exact phrase."
             )
-        self.danger_auto_enabled = True
+        self.permission_mode = PERMISSION_DANGER_AUTO
         self.session_last_activity = time.time()
         return self.danger_auto_status()
 
     def danger_auto_status(self) -> Dict[str, Any]:
         self._require_connected_agent_tool("danger_auto_status")
-        self._expire_idle_session()
-        remaining = max(0, int(DANGER_AUTO_IDLE_SECONDS - (time.time() - self.session_last_activity)))
-        return {
-            "profile": self.profile,
-            "danger_auto_enabled": self.danger_auto_enabled,
-            "risk_level": "5/5" if self.danger_auto_enabled else "3/5-5/5",
-            "idle_timeout_seconds": DANGER_AUTO_IDLE_SECONDS,
-            "seconds_until_idle_close": remaining,
+        status = self.permission_mode_status()
+        status.update(
+            {
+                "danger_auto_enabled": self.danger_auto_enabled,
+                "danger_phrase": DANGER_AUTO_PHRASE,
+                "risk_level": self.risk_level,
+            }
+        )
+        status.update({
             "temporary_allowed_roots": [str(root) for root in self.session_allowed_roots],
             "pending_action_approvals": len(self.pending_action_approvals),
             "granted_action_approvals": len(self.granted_action_approvals),
-            "danger_phrase": DANGER_AUTO_PHRASE,
-        }
+        })
+        return status
 
     def disable_danger_auto(self) -> Dict[str, Any]:
         self._require_connected_agent_tool("disable_danger_auto")
         self.touch()
-        self.danger_auto_enabled = False
+        if self.permission_mode == PERMISSION_DANGER_AUTO:
+            self.permission_mode = PERMISSION_APPROVAL
         return self.danger_auto_status()
 
     def grant_action_approval(self, approval_id: str, confirmation: str) -> Dict[str, Any]:
@@ -561,16 +826,35 @@ class FullAgentWorkspaceManager:
             ),
         }
 
-    def grant_workspace_access(self, path_value: str, access: str = "read") -> Dict[str, Any]:
+    def grant_workspace_access(
+        self,
+        path_value: str,
+        access: str = "read",
+        approval_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         self._require_connected_agent_tool("grant_workspace_access")
         self.touch()
         requested = self._resolve_grantable_root(path_value)
+        normalized_access = self._normalize_access(access)
+        action = {
+            "tool_name": "grant_workspace_access",
+            "path": str(requested),
+            "access": normalized_access,
+            "temporary": True,
+        }
+        self._require_connected_action_approval(
+            "grant_workspace_access",
+            action,
+            approval_id,
+            force=True,
+            reason="expanding the current session beyond its configured allowed roots",
+        )
         if not any(_is_relative_to(requested, root) for root in self.allowed_roots + self.session_allowed_roots):
             self.session_allowed_roots.append(requested)
         return {
             "status": "granted",
             "path": str(requested),
-            "access": self._normalize_access(access),
+            "access": normalized_access,
             "risk_level": "5/5",
             "temporary": True,
             "expires_after_idle_seconds": DANGER_AUTO_IDLE_SECONDS,
@@ -650,8 +934,17 @@ class FullAgentWorkspaceManager:
         tool_name: str,
         action: Dict[str, Any],
         approval_id: Optional[str],
+        *,
+        force: bool = False,
+        reason: Optional[str] = None,
     ) -> None:
-        if self.profile != PROFILE_CONNECTED_AGENT or self.danger_auto_enabled:
+        if self.profile != PROFILE_CONNECTED_AGENT:
+            return
+        automatic = self.permission_mode == PERMISSION_DANGER_AUTO or (
+            self.permission_mode == PERMISSION_CONTROLLED_AUTO
+            and tool_name in CONTROLLED_AUTO_TOOLS
+        )
+        if automatic and not force:
             return
         self._expire_action_approvals()
         fingerprint = _action_fingerprint(action)
@@ -694,6 +987,7 @@ class FullAgentWorkspaceManager:
                 "approval_id": approval_id,
                 "tool_name": tool_name,
                 "action": action,
+                "reason": reason or "this permission mode requires one-action approval",
                 "single_use": True,
                 "expires_after_idle_seconds": ACTION_APPROVAL_IDLE_SECONDS,
                 "next_step": (
@@ -717,7 +1011,7 @@ class FullAgentWorkspaceManager:
                 "bash command appears to reference protected credential-like material"
             )
 
-    def _assert_connected_bash_allowed(self, command: str) -> None:
+    def _assert_connected_bash_allowed(self, command: str) -> Optional[str]:
         self._assert_bash_command_allowed(command)
         lowered = command.lower()
         if "http://" in lowered or "https://" in lowered:
@@ -727,7 +1021,7 @@ class FullAgentWorkspaceManager:
         try:
             tokens = shlex.split(command, posix=True)
         except ValueError as exc:
-            raise ApprovalRequired(f"bash command needs explicit approval: could not parse shell tokens ({exc})") from exc
+            raise AccessDenied(f"bash command could not be parsed safely: {exc}") from exc
         lowered_tokens = [token.lower() for token in tokens]
         command_names = {
             Path(token).name.lower()
@@ -740,17 +1034,17 @@ class FullAgentWorkspaceManager:
                 "Connected Agent blocks network, browser/desktop, and clipboard commands: "
                 + ", ".join(blocked)
             )
-        if self.danger_auto_enabled:
-            if command_names.intersection(APPROVAL_COMMANDS):
-                raise ApprovalRequired(
-                    "The hidden danger switch still requires explicit one-action approval for deletion, moves, permission changes, or privileged commands"
-                )
-            if self._needs_install_approval(lowered_tokens):
-                raise ApprovalRequired("The hidden danger switch still requires explicit one-action approval before installing dependencies")
-            if self._needs_git_remote_approval(lowered_tokens):
-                raise ApprovalRequired("The hidden danger switch still requires explicit one-action approval for Git remote operations")
-            if "-delete" in lowered_tokens:
-                raise ApprovalRequired("The hidden danger switch still requires explicit one-action approval for find -delete style operations")
+        approval_reasons: List[str] = []
+        if command_names.intersection(APPROVAL_COMMANDS):
+            approval_reasons.append(
+                "deletion, moves, permission changes, or privileged commands"
+            )
+        if self._needs_install_approval(lowered_tokens):
+            approval_reasons.append("dependency installation")
+        if self._needs_git_remote_approval(lowered_tokens):
+            approval_reasons.append("Git remote operations")
+        if "-delete" in lowered_tokens:
+            approval_reasons.append("find -delete style operations")
         for token in tokens:
             path_token = token.strip("'\"")
             if not path_token.startswith("/"):
@@ -760,6 +1054,9 @@ class FullAgentWorkspaceManager:
                 raise AccessDenied(
                     "Connected Agent blocks bash commands that reference absolute paths outside allowed roots"
                 )
+        if approval_reasons:
+            return "; ".join(approval_reasons)
+        return None
 
     def _needs_install_approval(self, tokens: List[str]) -> bool:
         for index, token in enumerate(tokens):
@@ -821,11 +1118,13 @@ class FullAgentWorkspaceManager:
     def _expire_idle_session(self) -> None:
         if time.time() - self.session_last_activity <= DANGER_AUTO_IDLE_SECONDS:
             self._expire_action_approvals()
+            self._expire_patch_previews()
             return
-        self.danger_auto_enabled = False
+        self.permission_mode = PERMISSION_APPROVAL
         self.session_allowed_roots.clear()
         self.pending_action_approvals.clear()
         self.granted_action_approvals.clear()
+        self.pending_patch_previews.clear()
 
     def _expire_action_approvals(self) -> None:
         cutoff = time.time() - ACTION_APPROVAL_IDLE_SECONDS
@@ -838,6 +1137,14 @@ class FullAgentWorkspaceManager:
             approval_id: approval
             for approval_id, approval in self.granted_action_approvals.items()
             if float(approval.get("granted_at", approval.get("created_at", 0))) >= cutoff
+        }
+
+    def _expire_patch_previews(self) -> None:
+        cutoff = time.time() - PATCH_PREVIEW_IDLE_SECONDS
+        self.pending_patch_previews = {
+            preview_id: preview
+            for preview_id, preview in self.pending_patch_previews.items()
+            if float(preview.get("created_at", 0)) >= cutoff
         }
 
     def _resolve_grantable_root(self, path_value: str) -> Path:
@@ -873,6 +1180,31 @@ def validate_allowed_roots(roots: List[Path]) -> List[Path]:
             raise ValueError("Allowed root must not be a filesystem root")
         normalized.append(resolved)
     return normalized
+
+
+def validate_allowed_tasks(tasks: Dict[str, str]) -> Dict[str, str]:
+    normalized: Dict[str, str] = {}
+    for raw_name, raw_command in tasks.items():
+        name = raw_name.strip().lower()
+        command = raw_command.strip()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,31}", name):
+            raise ValueError(
+                "Allowed task names must use 1-32 lowercase letters, numbers, hyphens, or underscores"
+            )
+        if not command:
+            raise ValueError(f"Allowed task command is empty: {name}")
+        normalized[name] = command
+    return normalized
+
+
+def parse_allowed_tasks(values: Optional[List[str]]) -> Dict[str, str]:
+    tasks: Dict[str, str] = {}
+    for value in values or []:
+        if "=" not in value:
+            raise ValueError("--allowed-task must use NAME=COMMAND")
+        name, command = value.split("=", 1)
+        tasks[name] = command
+    return validate_allowed_tasks(tasks)
 
 
 def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
@@ -1000,6 +1332,99 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
             },
         },
     ]
+    structured_execution_tools = [
+        {
+            "name": "file_info",
+            "title": "File Info",
+            "description": (
+                "Return file type, size, modification time, and SHA-256 for a small "
+                "task-relevant file. Use the hash before preview_patch."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string"},
+                    "path": {"type": "string"},
+                },
+                "required": ["workspace_id", "path"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "preview_patch",
+            "title": "Preview Patch",
+            "description": (
+                "Preview an exact whole-file replacement for an existing UTF-8 file. "
+                "Returns a single-use preview_id and unified diff without writing."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string"},
+                    "path": {"type": "string"},
+                    "new_content": {"type": "string"},
+                    "expected_sha256": {"type": "string"},
+                },
+                "required": [
+                    "workspace_id",
+                    "path",
+                    "new_content",
+                    "expected_sha256",
+                ],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "apply_patch",
+            "title": "Apply Previewed Patch",
+            "description": (
+                "Apply exactly one unexpired preview_patch result. Approval mode "
+                "requires a one-action approval; Controlled Auto may apply it automatically."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string"},
+                    "preview_id": {"type": "string"},
+                    "approval_id": {"type": "string"},
+                },
+                "required": ["workspace_id", "preview_id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "list_tasks",
+            "title": "List Allowed Tasks",
+            "description": (
+                "List test, lint, build, or other commands explicitly configured "
+                "by the local session owner."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {"workspace_id": {"type": "string"}},
+                "required": ["workspace_id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "run_task",
+            "title": "Run Allowed Task",
+            "description": (
+                "Run one exact owner-configured task without arbitrary arguments. "
+                "Approval mode requires one-action approval; Controlled Auto may run it automatically."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string"},
+                    "task_name": {"type": "string"},
+                    "approval_id": {"type": "string"},
+                },
+                "required": ["workspace_id", "task_name"],
+                "additionalProperties": False,
+            },
+        },
+    ]
     bash_tool = {
         "name": "bash",
         "title": "Run Bash",
@@ -1021,6 +1446,37 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
         },
     }
     connected_tools = [
+        {
+            "name": "set_permission_mode",
+            "title": "Set Permission Mode",
+            "description": (
+                "Select approval or controlled_auto for this session. Controlled Auto "
+                "requires clear user confirmation and only auto-runs previewed patches "
+                "and owner-configured tasks."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "mode": {
+                        "type": "string",
+                        "enum": [PERMISSION_APPROVAL, PERMISSION_CONTROLLED_AUTO],
+                    },
+                    "confirmation": {"type": "string"},
+                },
+                "required": ["mode"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "permission_mode_status",
+            "title": "Permission Mode Status",
+            "description": "Return the current internal Connected Agent permission mode and hard boundaries.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+        },
         {
             "name": "enable_danger_auto",
             "title": "Enable Danger Auto",
@@ -1059,7 +1515,7 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
             "name": "grant_action_approval",
             "title": "Grant Action Approval",
             "description": (
-                "Grant one pending write/edit/bash action after the user clearly "
+                "Grant one pending side-effect or workspace-expansion action after the user clearly "
                 "approves it in chat. Single-use; retry the original tool call "
                 "with the returned approval_id."
             ),
@@ -1096,13 +1552,15 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
             "title": "Grant Workspace Access",
             "description": (
                 "Temporarily add a confirmed project directory to this session's "
-                "allowed roots. Use only after the user confirms in chat."
+                "allowed roots. This always requires a single-use action approval, "
+                "including in Controlled Auto or Danger Auto."
             ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "path": {"type": "string"},
                     "access": {"type": "string", "enum": ["read", "write", "execute"]},
+                    "approval_id": {"type": "string"},
                 },
                 "required": ["path"],
                 "additionalProperties": False,
@@ -1110,7 +1568,14 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
         },
     ]
     if profile == PROFILE_CONNECTED_AGENT:
-        return base_tools + execution_tools + search_tools + [bash_tool] + connected_tools
+        return (
+            base_tools
+            + structured_execution_tools
+            + execution_tools
+            + search_tools
+            + [bash_tool]
+            + connected_tools
+        )
     return base_tools + execution_tools + search_tools + [bash_tool]
 
 
@@ -1171,6 +1636,32 @@ def _call_tool(params: Dict[str, Any], manager: FullAgentWorkspaceManager) -> Di
                 _optional_int(arguments, "end_line"),
             )
             return _tool_result(json.dumps(result, indent=2), result)
+        if name == "file_info":
+            result = manager.file_info(
+                _required_string(arguments, "workspace_id"),
+                _required_string(arguments, "path"),
+            )
+            return _tool_result(json.dumps(result, indent=2), result)
+        if name == "preview_patch":
+            _require_strings(
+                arguments,
+                ["workspace_id", "path", "new_content", "expected_sha256"],
+                allow_empty={"new_content"},
+            )
+            result = manager.preview_patch(
+                arguments["workspace_id"],
+                arguments["path"],
+                arguments["new_content"],
+                arguments["expected_sha256"],
+            )
+            return _tool_result(json.dumps(result, indent=2), result)
+        if name == "apply_patch":
+            result = manager.apply_patch(
+                _required_string(arguments, "workspace_id"),
+                _required_string(arguments, "preview_id"),
+                arguments.get("approval_id"),
+            )
+            return _tool_result(json.dumps(result, indent=2), result)
         if name == "write":
             _require_strings(arguments, ["workspace_id", "path", "content"])
             result = manager.write_file(
@@ -1206,6 +1697,25 @@ def _call_tool(params: Dict[str, Any], manager: FullAgentWorkspaceManager) -> Di
                 arguments.get("approval_id"),
             )
             return _tool_result(json.dumps(result, indent=2), result)
+        if name == "list_tasks":
+            result = manager.list_tasks(_required_string(arguments, "workspace_id"))
+            return _tool_result(json.dumps(result, indent=2), result)
+        if name == "run_task":
+            result = manager.run_task(
+                _required_string(arguments, "workspace_id"),
+                _required_string(arguments, "task_name"),
+                arguments.get("approval_id"),
+            )
+            return _tool_result(json.dumps(result, indent=2), result)
+        if name == "set_permission_mode":
+            result = manager.set_permission_mode(
+                _required_string(arguments, "mode"),
+                arguments.get("confirmation", ""),
+            )
+            return _tool_result(json.dumps(result, indent=2), result)
+        if name == "permission_mode_status":
+            result = manager.permission_mode_status()
+            return _tool_result(json.dumps(result, indent=2), result)
         if name == "enable_danger_auto":
             result = manager.enable_danger_auto(_required_string(arguments, "phrase"))
             return _tool_result(json.dumps(result, indent=2), result)
@@ -1232,6 +1742,7 @@ def _call_tool(params: Dict[str, Any], manager: FullAgentWorkspaceManager) -> Di
             result = manager.grant_workspace_access(
                 _required_string(arguments, "path"),
                 arguments.get("access", "read"),
+                arguments.get("approval_id"),
             )
             return _tool_result(json.dumps(result, indent=2), result)
         return _tool_error(f"Unknown tool: {name}")
@@ -1295,11 +1806,16 @@ def _initialize_result(
                 "read accepts task-relevant UTF-8 source files up to 1 MB; use "
                 "targeted grep plus read_lines for larger source files, and skip "
                 "node_modules, build outputs, sourcemaps, image galleries, and "
-                "dependency artifacts unless the task explicitly requires them. In default mode, "
-                "write, edit, and bash return a one-action approval_id; ask the "
+                "dependency artifacts unless the task explicitly requires them. "
+                "Connected Agent has three internal permission modes, not three product tiers: "
+                "approval, controlled_auto, and danger_auto. It starts in approval mode. "
+                "In approval mode, write, edit, apply_patch, bash, and run_task return "
+                "a one-action approval_id; ask the "
                 "user to approve that exact action in chat, call "
                 "grant_action_approval, then retry the original tool call once "
-                "with approval_id. Do not suggest the "
+                "with approval_id. Controlled Auto may automatically apply only a "
+                "previously previewed patch and run only an owner-configured task; raw "
+                "write, edit, and bash still require approval. Do not suggest the "
                 f"`{DANGER_AUTO_PHRASE}` phrase for ordinary one-off writes, "
                 "edits, or bash commands. That phrase is only a hidden high-risk "
                 "automation switch typed by the user. Server policy still blocks "
@@ -1315,6 +1831,9 @@ def _initialize_result(
         "allowed_roots": [str(root) for root in manager.allowed_roots],
         "temporary_allowed_roots": [str(root) for root in manager.session_allowed_roots],
         "profile": manager.profile,
+        "contract_version": TOOL_CONTRACT_VERSION,
+        "permission_mode": manager.permission_mode,
+        "tools": manager.tool_names,
         "risk_level": manager.risk_level,
     }
 
@@ -1378,11 +1897,17 @@ def _arguments_dict(value: Any) -> Dict[str, Any]:
     raise TypeError("Tool arguments must be an object")
 
 
-def _require_strings(arguments: Dict[str, Any], names: List[str]) -> None:
+def _require_strings(
+    arguments: Dict[str, Any],
+    names: List[str],
+    allow_empty: Optional[set[str]] = None,
+) -> None:
+    allowed_empty = allow_empty or set()
     missing = [
         name
         for name in names
-        if not isinstance(arguments.get(name), str) or not arguments.get(name, "").strip()
+        if not isinstance(arguments.get(name), str)
+        or (name not in allowed_empty and not arguments.get(name, "").strip())
     ]
     if missing:
         raise ValueError(f"Missing required string argument(s): {', '.join(missing)}")
@@ -1485,6 +2010,13 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Connected Agent workspace MCP over stdio.")
     parser.add_argument("--allowed-root", type=Path, action="append", required=True)
     parser.add_argument(
+        "--allowed-task",
+        action="append",
+        default=[],
+        metavar="NAME=COMMAND",
+        help="Allow one exact local task command for list_tasks/run_task.",
+    )
+    parser.add_argument(
         "--profile",
         choices=sorted(VALID_PROFILES),
         default=PROFILE_FULL_AGENT,
@@ -1494,7 +2026,14 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(argv)
-    return run_stdio(FullAgentWorkspaceManager(args.allowed_root, profile=args.profile), sys.stdin)
+    return run_stdio(
+        FullAgentWorkspaceManager(
+            args.allowed_root,
+            profile=args.profile,
+            allowed_tasks=parse_allowed_tasks(args.allowed_task),
+        ),
+        sys.stdin,
+    )
 
 
 if __name__ == "__main__":

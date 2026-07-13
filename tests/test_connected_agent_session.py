@@ -24,6 +24,7 @@ class FullAgentSessionTests(unittest.TestCase):
             "port": 8765,
             "public_base_url": "https://connected-agent.example.com",
             "allowed_roots": [str(Path(tempdir) / "workspace")],
+            "allowed_tasks": [],
             "tailscale_bin": "tailscale",
             "socket": "/tmp/test-tailscale.sock",
             "idle_timeout_seconds": session.DEFAULT_IDLE_TIMEOUT_SECONDS,
@@ -61,6 +62,19 @@ class FullAgentSessionTests(unittest.TestCase):
         self.assertIn(str(workspace), command)
         self.assertIn("--public-base-url", command)
         self.assertIn("https://connected-agent.example.com", command)
+
+    def test_build_server_command_forwards_allowed_tasks(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            args = self.make_args(
+                tempdir,
+                allowed_tasks=["test=python3 -m unittest", "lint=ruff check ."],
+            )
+
+            command = session.build_server_command(args)
+
+        self.assertEqual(command.count("--allowed-task"), 2)
+        self.assertIn("test=python3 -m unittest", command)
+        self.assertIn("lint=ruff check .", command)
 
     def test_build_server_command_keeps_legacy_full_agent_mode_when_explicit(self):
         with tempfile.TemporaryDirectory() as tempdir:

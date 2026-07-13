@@ -183,10 +183,11 @@ necessary project context directly without a decision package:
 - `--mode connected-agent` is required,
 - at least one `--allowed-root` is required,
 - home and filesystem roots are rejected,
-- tools include `open_default_workspace`, `open_workspace`, `ls`, `read`,
-  `read_lines`, `write`, `edit`, `grep`, `glob`, `bash`, `enable_danger_auto`, `danger_auto_status`,
-  `disable_danger_auto`, `grant_action_approval`, `request_workspace_access`, and
-  `grant_workspace_access`,
+- tool contract `2.0` is generated from the server schema and includes
+  workspace open/read/search tools; `file_info`, `preview_patch`, and
+  `apply_patch`; owner-configured `list_tasks` and `run_task`; raw
+  `write`/`edit`/`bash`; permission-status controls; Danger Auto controls; and
+  action/workspace approval tools,
 - when exactly one allowed root is configured, `open_default_workspace` avoids
   passing a local absolute path through ChatGPT Web,
 - stale ChatGPT connector schemas can call `open_workspace` with path exactly
@@ -198,14 +199,21 @@ necessary project context directly without a decision package:
 - whole-file reads are capped at normal source-file scale, currently 1 MB, with
   `read_lines` for larger task-relevant text files,
 - other task-relevant project files may be chosen by the web advisor,
-- writes, edits, and bash use one-action approval by default: return
+- the internal permission mode starts at `approval`; every side effect returns
   `approval_id`, confirm with the user in chat, call `grant_action_approval`,
   then retry the same tool call once,
+- `controlled_auto` may auto-run only a patch that was stored by
+  `preview_patch` against the current file hash, or an exact command configured
+  locally at session start and returned by `list_tasks`; raw write/edit/bash
+  continue to ask,
+- expanding the session to another workspace is always separately
+  approval-gated in every internal mode,
 - The hidden danger switch starts only after the user typed
   `dangerously trust connected agent`,
-- the hidden danger switch can auto-run project-local write/edit and safe local bash, but
-  still blocks network, browser/desktop, clipboard, secret-path, path escape,
-  dependency install, Git remote, and broad destructive command classes,
+- the hidden danger switch can auto-run project-local write/edit and safe local bash,
+  while network, browser/desktop, clipboard, secret-path, and path escape remain
+  hard-blocked and install, Git remote, and broad destructive classes remain
+  separately approval-gated,
 - risk is `3/5-5/5`; the hidden danger switch is fixed `5/5`.
 
 ## Deprecated Full-Agent Mode

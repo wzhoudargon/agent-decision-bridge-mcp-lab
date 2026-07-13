@@ -10,6 +10,14 @@ from typing import Iterable, List, Optional
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from server.connected_agent_server import (  # noqa: E402
+    PROFILE_CONNECTED_AGENT,
+    TOOL_CONTRACT_VERSION,
+    tool_definitions,
+)
 DEFAULT_SAFE_FILES = [
     "README.md",
     "docs/security-public.md",
@@ -22,22 +30,7 @@ DEEP_REVIEW_FILES = [
 ]
 
 CURRENT_CONNECTED_AGENT_TOOLS = [
-    "open_default_workspace",
-    "open_workspace",
-    "ls",
-    "read",
-    "read_lines",
-    "write",
-    "edit",
-    "grep",
-    "glob",
-    "bash",
-    "enable_danger_auto",
-    "danger_auto_status",
-    "disable_danger_auto",
-    "grant_action_approval",
-    "request_workspace_access",
-    "grant_workspace_access",
+    tool["name"] for tool in tool_definitions(PROFILE_CONNECTED_AGENT)
 ]
 HARD_DENY_PARTS = {
     ".env",
@@ -163,7 +156,7 @@ def render_prompt(
 In the newer Colleagues or embedded ChatGPT composer, type @ and select the user-created connector whose exact display name is `{advisor_name}` before sending this prompt. Let the UI create the connector chip or plugin reference; do not hand-type or reconstruct a plugin:// identifier. Writing the connector name as plain text does not attach its tools.
 Use a chat mode where Apps/MCP connector tools are visible. Before starting the task, confirm that the selected `{advisor_name}` connector reference is present and that the complete current tool contract is visible:
 {required_tools}
-If any listed tool is missing, do not inspect the project and do not continue with a degraded tool set. Stop with `connector_contract_incomplete`; ask the user to start a fresh conversation in a tool-capable ChatGPT mode, attach the exact connector again through @, and update/re-publish or reinstall it if the fresh conversation is still incomplete.
+This is Connected Agent tool contract {TOOL_CONTRACT_VERSION}. If any listed tool is missing, do not inspect the project and do not continue with a degraded tool set. Stop with `connector_contract_incomplete`; ask the user to start a fresh conversation in a tool-capable ChatGPT mode, attach the exact connector again through @, and update/re-publish or reinstall it if the fresh conversation is still incomplete.
 
 Use only the attached {advisor_name} connector. Do not answer from chat memory.
 Do not fabricate the Danger Auto phrase. Only call enable_danger_auto if the user typed this exact phrase in ChatGPT Web: dangerously trust connected agent
@@ -174,12 +167,16 @@ Task:
 Connector steps:
 1. Apply this deterministic workspace-open rule; do not ask the user to choose an entry point. If open_default_workspace is visible, call it with no arguments. Otherwise, if open_workspace is visible, call it exactly once with path "default". The "default" alias is the required legacy-schema compatibility path, not an optional suggestion, and needs neither confirmation nor a local absolute path. Never claim that a server change or explicit filesystem path is required merely because open_default_workspace is absent. After opening, verify that the returned root is the currently authorized workspace. Report failure only if the applicable visible entry point actually returns an error. Never guess or request a /Users/... path.
 2. {file_instruction}
-3. Use only connector tools. For context inspection, use ls, glob, grep, read, and read_lines. Prefer source files over generated assets: skip node_modules, dist/build outputs, image galleries, sourcemaps, and lockfile-sized dependency artifacts unless Codex explicitly asks for them. Whole-file read is intended for task-relevant UTF-8 files up to the server limit; for larger source files, use grep to locate relevant symbols and read_lines for bounded 1-based line ranges. In default Connected Agent mode, write, edit, and bash require approval. Do not use Python, browser file checks, uploads, screenshots, or chat-only guesses.
+3. Use only connector tools. For context inspection, use ls, glob, grep, read, read_lines, and file_info. Prefer source files over generated assets: skip node_modules, dist/build outputs, image galleries, sourcemaps, and lockfile-sized dependency artifacts unless Codex explicitly asks for them. Whole-file read is intended for task-relevant UTF-8 files up to the server limit; for larger source files, use grep to locate relevant symbols and read_lines for bounded 1-based line ranges. Do not use Python, browser file checks, uploads, screenshots, or chat-only guesses.
 4. Protected boundary. Do not read, search, write, edit, or run commands against:
 {protected_list}
-5. Inspect first. For any write, edit, or bash action in default mode, first ask the user for approval of the exact file or command, the intended change, and the risk. Only call that tool after the user approves that specific action.
-6. Danger Auto: if and only if the user typed `dangerously trust connected agent`, call enable_danger_auto with that phrase. Danger Auto may auto-run project-local write/edit and safe local bash, but server policy still blocks network commands, GUI/desktop control, clipboard access, secret paths, path escapes, dependency installs, Git remote operations, and broad destructive actions.
-7. If protected information seems necessary, stop and ask for a sanitized summary instead of trying to access it.
+5. Connected Agent is the second product tier and has three internal permission modes, not three product tiers:
+   - approval: the default; every side-effectful write, edit, apply_patch, bash, or run_task needs one-action approval.
+   - controlled_auto: only a patch already shown by preview_patch and a task returned by list_tasks may run automatically. Raw write, edit, and bash still need approval. Call set_permission_mode only after the user clearly confirms this mode in the current chat.
+   - danger_auto: the hidden 5/5 switch described below.
+6. Prefer the controlled executor path for project changes: call file_info, then preview_patch, show the diff, then apply_patch. For tests, lint, or builds, call list_tasks and use run_task only for an exact returned task name. Never invent a task or add arbitrary arguments. In approval mode, if a side-effectful tool returns approval_id, show the exact action, impact, and approval_id; wait for the user's explicit approval; call grant_action_approval; retry the exact original call once with the same approval_id.
+7. Danger Auto: if and only if the user typed `dangerously trust connected agent`, call enable_danger_auto with that phrase. Danger Auto may auto-run project-local write/edit and safe local bash, but server policy still blocks network commands, GUI/desktop control, clipboard access, secret paths, path escapes, and keeps dependency installs, Git remote operations, and broad destructive actions separately approval-gated.
+8. If protected information seems necessary, stop and ask for a sanitized summary instead of trying to access it.
 
 Reply in Chinese with:
 1. whether the Connected Agent connector truly worked,

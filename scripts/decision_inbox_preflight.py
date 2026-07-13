@@ -35,39 +35,23 @@ from server.decision_inbox_http_server import (  # noqa: E402
     public_mcp_url,
 )
 from server.decision_inbox_server import AUTO_MCP_TOOL_NAMES  # noqa: E402
+from server.connected_agent_server import (  # noqa: E402
+    PROFILE_CONNECTED_AGENT,
+    PROFILE_FULL_AGENT,
+    PROFILE_READ_ONLY_PROJECT,
+    tool_definitions,
+)
 
 
 DEFAULT_LOCAL_MCP_URL = "http://127.0.0.1:8765/mcp"
 DEFAULT_TOKEN_FILE = Path("/tmp/decision-inbox-mcp-token")
 DEFAULT_AUTO_MCP_STATE_FILE = Path.home() / ".local/share/decision-inbox-mcp-lab/oauth-state.json"
-FULL_AGENT_TOOL_NAMES = [
-    "open_workspace",
-    "ls",
-    "read",
-    "read_lines",
-    "write",
-    "edit",
-    "grep",
-    "glob",
-    "bash",
-]
+FULL_AGENT_TOOL_NAMES = [tool["name"] for tool in tool_definitions(PROFILE_FULL_AGENT)]
 CONNECTED_AGENT_TOOL_NAMES = [
-    "open_default_workspace",
-] + FULL_AGENT_TOOL_NAMES + [
-    "enable_danger_auto",
-    "danger_auto_status",
-    "disable_danger_auto",
-    "grant_action_approval",
-    "request_workspace_access",
-    "grant_workspace_access",
+    tool["name"] for tool in tool_definitions(PROFILE_CONNECTED_AGENT)
 ]
 READ_ONLY_PROJECT_TOOL_NAMES = [
-    "open_workspace",
-    "ls",
-    "read",
-    "read_lines",
-    "grep",
-    "glob",
+    tool["name"] for tool in tool_definitions(PROFILE_READ_ONLY_PROJECT)
 ]
 DISALLOWED_AUTO_MCP_TOOLS = {
     "request_local_fact_check",

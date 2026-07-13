@@ -435,11 +435,18 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
                 "ls",
                 "read",
                 "read_lines",
+                "file_info",
+                "preview_patch",
+                "apply_patch",
+                "list_tasks",
+                "run_task",
                 "write",
                 "edit",
                 "grep",
                 "glob",
                 "bash",
+                "set_permission_mode",
+                "permission_mode_status",
                 "enable_danger_auto",
                 "danger_auto_status",
                 "disable_danger_auto",
@@ -531,6 +538,169 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
         self.assertTrue(reused["result"]["isError"])
         self.assertEqual(reused["result"]["structuredContent"]["error"], "approval_required")
 
+    def test_connected_agent_open_reports_contract_permission_mode_and_tools(self):
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root], profile=srv.PROFILE_CONNECTED_AGENT
+        )
+
+        opened = manager.open_default_workspace()
+
+        self.assertEqual(opened["contract_version"], srv.TOOL_CONTRACT_VERSION)
+        self.assertEqual(opened["permission_mode"], srv.PERMISSION_APPROVAL)
+        self.assertEqual(opened["tools"], manager.tool_names)
+        self.assertEqual(
+            manager.tool_names,
+            [tool["name"] for tool in srv.tool_definitions(srv.PROFILE_CONNECTED_AGENT)],
+        )
+
+    def test_preview_patch_requires_approval_then_applies_exact_single_use_preview(self):
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root], profile=srv.PROFILE_CONNECTED_AGENT
+        )
+        workspace = manager.open_default_workspace()["workspace_id"]
+        info = manager.file_info(workspace, "README.md")
+        preview = manager.preview_patch(
+            workspace,
+            "README.md",
+            "hello controlled agent\n",
+            info["sha256"],
+        )
+        self.assertIn("-hello full agent", preview["diff"])
+        self.assertIn("+hello controlled agent", preview["diff"])
+        self.assertEqual(manager.read_file(workspace, "README.md"), "hello full agent\n")
+
+        first = srv.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 100,
+                "method": "tools/call",
+                "params": {
+                    "name": "apply_patch",
+                    "arguments": {
+                        "workspace_id": workspace,
+                        "preview_id": preview["preview_id"],
+                    },
+                },
+            },
+            manager,
+        )
+        self.assertTrue(first["result"]["isError"])
+        self.assertIn(
+            "+hello controlled agent",
+            first["result"]["structuredContent"]["action"]["diff"],
+        )
+        approval_id = first["result"]["structuredContent"]["approval_id"]
+        manager.grant_action_approval(approval_id, "确认应用刚才展示的修改")
+        applied = manager.apply_patch(workspace, preview["preview_id"], approval_id)
+        self.assertTrue(applied["applied"])
+        self.assertEqual(
+            manager.read_file(workspace, "README.md"), "hello controlled agent\n"
+        )
+        with self.assertRaises(srv.AccessDenied):
+            manager.apply_patch(workspace, preview["preview_id"])
+
+    def test_preview_patch_rejects_stale_hash_and_file_changes(self):
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root], profile=srv.PROFILE_CONNECTED_AGENT
+        )
+        workspace = manager.open_default_workspace()["workspace_id"]
+        with self.assertRaises(srv.AccessDenied):
+            manager.preview_patch(workspace, "README.md", "new\n", "0" * 64)
+
+        info = manager.file_info(workspace, "README.md")
+        preview = manager.preview_patch(
+            workspace, "README.md", "new\n", info["sha256"]
+        )
+        (self.root / "README.md").write_text("changed elsewhere\n", encoding="utf-8")
+        with self.assertRaises(srv.AccessDenied):
+            manager.apply_patch(workspace, preview["preview_id"])
+
+    def test_controlled_auto_only_automates_previewed_patches_and_allowed_tasks(self):
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root],
+            profile=srv.PROFILE_CONNECTED_AGENT,
+            allowed_tasks={"check": "printf checked"},
+        )
+        workspace = manager.open_default_workspace()["workspace_id"]
+        with self.assertRaises(srv.AccessDenied):
+            manager.set_permission_mode(srv.PERMISSION_CONTROLLED_AUTO, "maybe")
+        status = manager.set_permission_mode(
+            srv.PERMISSION_CONTROLLED_AUTO,
+            "确认启用受控自动模式",
+        )
+        self.assertEqual(status["permission_mode"], srv.PERMISSION_CONTROLLED_AUTO)
+        self.assertEqual(status["automatic_tools"], ["apply_patch", "run_task"])
+
+        info = manager.file_info(workspace, "README.md")
+        preview = manager.preview_patch(
+            workspace, "README.md", "controlled\n", info["sha256"]
+        )
+        self.assertTrue(manager.apply_patch(workspace, preview["preview_id"])["applied"])
+        task = manager.run_task(workspace, "check")
+        self.assertEqual(task["stdout"], "checked")
+        with self.assertRaises(srv.AccessDenied):
+            manager.run_task(workspace, "not-configured")
+        with self.assertRaises(srv.ApprovalRequired):
+            manager.write_file(workspace, "raw.txt", "still asks\n")
+        with self.assertRaises(srv.ApprovalRequired):
+            manager.run_bash(workspace, "printf raw")
+
+    def test_allowed_tasks_are_validated_and_high_risk_tasks_stay_blocked(self):
+        self.assertEqual(
+            srv.parse_allowed_tasks(["test=python3 -m unittest", "lint=ruff check ."]),
+            {"test": "python3 -m unittest", "lint": "ruff check ."},
+        )
+        with self.assertRaises(ValueError):
+            srv.parse_allowed_tasks(["Bad Name=printf no"])
+
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root],
+            profile=srv.PROFILE_CONNECTED_AGENT,
+            allowed_tasks={"unsafe": "rm README.md"},
+        )
+        workspace = manager.open_default_workspace()["workspace_id"]
+        manager.set_permission_mode(
+            srv.PERMISSION_CONTROLLED_AUTO,
+            "确认启用受控自动模式",
+        )
+        with self.assertRaises(srv.AccessDenied):
+            manager.run_task(workspace, "unsafe")
+
+    def test_danger_auto_high_risk_bash_returns_grantable_single_use_approval(self):
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root], profile=srv.PROFILE_CONNECTED_AGENT
+        )
+        workspace = manager.open_default_workspace()["workspace_id"]
+        manager.enable_danger_auto(srv.DANGER_AUTO_PHRASE)
+        first = srv.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 101,
+                "method": "tools/call",
+                "params": {
+                    "name": "bash",
+                    "arguments": {
+                        "workspace_id": workspace,
+                        "command": "mv README.md MOVED.md",
+                    },
+                },
+            },
+            manager,
+        )
+        self.assertTrue(first["result"]["isError"])
+        structured = first["result"]["structuredContent"]
+        self.assertEqual(structured["error"], "approval_required")
+        self.assertIn("moves", structured["reason"])
+        approval_id = structured["approval_id"]
+        manager.grant_action_approval(approval_id, "确认移动这个文件")
+        moved = manager.run_bash(
+            workspace,
+            "mv README.md MOVED.md",
+            approval_id=approval_id,
+        )
+        self.assertEqual(moved["returncode"], 0)
+        self.assertTrue((self.root / "MOVED.md").exists())
+
     def test_connected_agent_danger_auto_allows_safe_local_work_and_blocks_unsafe_bash(self):
         manager = srv.FullAgentWorkspaceManager(
             [self.root], profile=srv.PROFILE_CONNECTED_AGENT
@@ -597,7 +767,13 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
 
         request = manager.request_workspace_access(str(outside), "read linked project", "read")
         self.assertEqual(request["status"], "approval_required")
-        grant = manager.grant_workspace_access(str(outside), "read")
+        with self.assertRaises(srv.ApprovalRequired) as approval:
+            manager.grant_workspace_access(str(outside), "read")
+        approval_id = approval.exception.structured["approval_id"]
+        manager.grant_action_approval(approval_id, "确认临时读取这个额外工作区")
+        grant = manager.grant_workspace_access(
+            str(outside), "read", approval_id=approval_id
+        )
         self.assertEqual(grant["status"], "granted")
 
         outside_workspace = manager.open_workspace(str(outside))["workspace_id"]
@@ -608,6 +784,23 @@ class FullAgentWorkspaceManagerTests(unittest.TestCase):
         status = manager.danger_auto_status()
         self.assertFalse(status["danger_auto_enabled"])
         self.assertEqual(status["temporary_allowed_roots"], [])
+
+    def test_workspace_expansion_always_requires_approval_even_in_danger_auto(self):
+        outside = Path(self.tempdir.name) / "danger-outside"
+        outside.mkdir()
+        manager = srv.FullAgentWorkspaceManager(
+            [self.root], profile=srv.PROFILE_CONNECTED_AGENT
+        )
+        manager.enable_danger_auto(srv.DANGER_AUTO_PHRASE)
+
+        with self.assertRaises(srv.ApprovalRequired) as approval:
+            manager.grant_workspace_access(str(outside), "read")
+
+        self.assertEqual(
+            approval.exception.structured["action"]["tool_name"],
+            "grant_workspace_access",
+        )
+        self.assertIn("expanding", approval.exception.structured["reason"])
 
 
 if __name__ == "__main__":

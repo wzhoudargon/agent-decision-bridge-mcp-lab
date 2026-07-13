@@ -2,6 +2,9 @@ import json
 import unittest
 from pathlib import Path
 
+from scripts import connected_agent_consultation_prompt as prompt
+from server import connected_agent_server as connected_server
+
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN_CASES = ROOT / "tests" / "fixtures" / "agent_decision_bridge_golden_cases.json"
@@ -22,6 +25,17 @@ CURRENT_PRODUCT_FILES = (
 
 
 class ProductContractConsistencyTests(unittest.TestCase):
+    def test_prompt_tool_contract_is_derived_from_server_schema(self):
+        schema_names = [
+            tool["name"]
+            for tool in connected_server.tool_definitions(
+                connected_server.PROFILE_CONNECTED_AGENT
+            )
+        ]
+
+        self.assertEqual(prompt.CURRENT_CONNECTED_AGENT_TOOLS, schema_names)
+        self.assertEqual(prompt.TOOL_CONTRACT_VERSION, connected_server.TOOL_CONTRACT_VERSION)
+
     def test_current_product_copy_does_not_use_three_state_import_taxonomy(self):
         combined = "\n".join(path.read_text(encoding="utf-8") for path in CURRENT_PRODUCT_FILES)
 

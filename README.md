@@ -17,8 +17,8 @@ web model into unchecked local authority.
 
 Ask First produces a focused review package for manual advisor review.
 Connected Agent opens a bounded project window so ChatGPT Web can list, search,
-and read task-relevant files inside an allowed root. Write, edit, and shell
-requests use one-action approval by default.
+read, and act on task-relevant files inside an allowed root as a controlled
+project executor. It starts in approval mode, so every side effect asks first.
 
 External advice is never authorization. Codex remains the local fact checker and
 executor, and the current user remains the only authority for side effects.
@@ -56,6 +56,7 @@ Prepare a Connected Agent consultation:
 ```bash
 python3 scripts/connected_agent_flow.py prepare \
   --allowed-root "$PWD" \
+  --allowed-task "test=python3 -m unittest discover -s tests" \
   --public-base-url "https://your-public-host.example.com" \
   --advisor-channel user-web \
   --advisor-health ready \
@@ -95,6 +96,19 @@ The normal flow is:
    `Need info`.
 7. The session is closed manually or by idle timeout.
 
+Connected Agent has three internal permission modes. These are not additional
+product tiers:
+
+| Internal mode | Plain-language behavior | Automatic side effects |
+|---|---|---|
+| Approval | Default. Show the exact action and ask every time. | None |
+| Controlled Auto | Recommended for bounded execution. Apply only an already previewed file change or run an owner-configured task. | `apply_patch`, `run_task` only |
+| Danger Auto | Hidden 5/5 session switch. Allows broader project-local automation. | Safe local write/edit/bash, while high-risk classes still ask |
+
+The safer editing path is `file_info -> preview_patch -> apply_patch`. The safer
+command path is `list_tasks -> run_task`; tasks must be configured locally when
+the session starts, and the web model cannot add arguments or invent a command.
+
 Connected Agent does not automatically give Codex an outbound GPT Pro call. If
 Codex cannot reach a real advisor channel, the correct state is
 `waiting_for_advisor_channel`.
@@ -107,7 +121,8 @@ Agent Decision Bridge is built around explicit boundaries:
 - home and filesystem roots are rejected,
 - `.env*`, `.git`, SSH/cloud credentials, private-key material, and known token
   or OAuth state files are blocked,
-- writes, edits, and shell commands require one-action approval by default,
+- all side effects require one-action approval in the default internal mode,
+- Controlled Auto can automate only previewed patches and locally allowlisted tasks,
 - dependency installation, Git remote operations, broad destructive actions,
   browser/desktop control, clipboard access, network commands, and path escapes
   are denied or approval-gated,
@@ -126,6 +141,7 @@ details.
 ├── docs/                  # User guide, architecture, runbooks, and verification notes
 ├── scripts/               # Consultation, session, preflight, capture, reset, and import helpers
 ├── server/                # MCP stdio and Streamable HTTP server implementations
+├── skills/                # Versioned reusable Codex skill package and evals
 ├── test-workspace/        # Synthetic workspace used for restricted-access tests
 └── tests/                 # Python unittest coverage
 ```

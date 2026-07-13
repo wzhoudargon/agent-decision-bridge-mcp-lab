@@ -63,6 +63,17 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         default=[],
         help="Workspace root Connected Agent may open. Required for open.",
     )
+    parser.add_argument(
+        "--allowed-task",
+        dest="allowed_tasks",
+        action="append",
+        default=[],
+        metavar="NAME=COMMAND",
+        help=(
+            "Expose one exact test/lint/build command through list_tasks/run_task. "
+            "Can be passed multiple times."
+        ),
+    )
     parser.add_argument("--tailscale-bin", default="tailscale")
     parser.add_argument("--socket", default=DEFAULT_TAILSCALE_SOCKET)
     parser.add_argument(
@@ -209,6 +220,7 @@ def open_session(args: argparse.Namespace) -> int:
         "local_mcp_url": local_mcp_url,
         "public_base_url": normalize_public_base_url(args.public_base_url),
         "allowed_roots": [str(Path(item).expanduser()) for item in args.allowed_roots],
+        "allowed_tasks": list(args.allowed_tasks),
         "tailscale_bin": None if args.local_only else args.tailscale_bin,
         "tailscale_socket": None if args.local_only else args.socket,
         "idle_timeout_seconds": args.idle_timeout_seconds,
@@ -386,6 +398,8 @@ def build_server_command(args: argparse.Namespace) -> List[str]:
         command.extend(["--public-base-url", normalize_public_base_url(args.public_base_url)])
     for allowed_root in args.allowed_roots:
         command.extend(["--allowed-root", str(Path(allowed_root).expanduser())])
+    for allowed_task in args.allowed_tasks:
+        command.extend(["--allowed-task", allowed_task])
     if args.oauth_state_file:
         command.extend(["--oauth-state-file", args.oauth_state_file])
     if args.oauth_owner_token_file:

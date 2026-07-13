@@ -1,0 +1,4 @@
+interface:
+  display_name: "codex外接最强助理"
+  short_description: "用 Ask First 或受控 Connected Agent 协作外部模型"
+  default_prompt: "Use $agent-decision-bridge to prepare an Ask First package, review returned advice, or run Connected Agent as a bounded controlled project executor."

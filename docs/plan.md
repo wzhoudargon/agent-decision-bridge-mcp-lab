@@ -8,8 +8,8 @@ Current public modes:
 - **Ask First**: Codex prepares a focused review package for manual advisor
   review. No connector exposure. Risk `1/5`.
 - **Connected Agent**: ChatGPT Web connects to a short-lived allowed project
-  window through Apps/MCP connector tools. Read/search/list are automatic;
-  write/edit/bash use one-action approval by default. Risk `3/5-5/5`.
+  window through Apps/MCP connector tools as a controlled project executor. It
+  starts with one-action approval for every side effect. Risk `3/5-5/5`.
 
 Older multi-mode names and separate read-only/full-access connector names are
 historical implementation names or compatibility aliases. Do not use them as
@@ -25,8 +25,9 @@ Status: implemented locally.
 
 - **Ask First**: package/advice only, no MCP exposure, risk `1/5`.
 - **Connected Agent**: ChatGPT Web connects to allowed project roots through
-  `--mode connected-agent`; read/search/list are automatic, while
-  write/edit/bash use one-action approval by default.
+  `--mode connected-agent`; read/search/list are automatic. Internal
+  `approval` mode asks for every side effect; `controlled_auto` automates only
+  stored patch previews and locally allowlisted tasks.
 - **Danger Auto** is a Connected Agent sub-mode. It starts only when the user
   typed `dangerously trust connected agent` in ChatGPT Web and the connector
   calls `enable_danger_auto`. It is session-only, fixed risk `5/5`, and still
@@ -268,8 +269,9 @@ Implemented:
 - legacy `--mode full-agent` and `--mode read-only-project` compatibility
   aliases on the HTTP MCP server,
 - `--allowed-root` required, with home and filesystem roots rejected,
-- Connected Agent backend tools: `open_workspace`, `read`, `write`, `edit`,
-  `grep`, `glob`, `ls`, and `bash`,
+- Connected Agent contract `2.0` adds deterministic workspace open/read/search,
+  file metadata, previewed patches, locally allowlisted tasks, raw
+  write/edit/bash, permission controls, and single-action approval tools,
 - default OAuth Owner password and state files under
   `~/.local/share/agent-decision-bridge/`,
 - `--oauth-state-file none` to disable OAuth persistence,

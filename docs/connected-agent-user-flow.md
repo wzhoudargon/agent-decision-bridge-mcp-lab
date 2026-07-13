@@ -53,9 +53,13 @@ First instead.
    Whole-file `read` returns the UTF-8 body in both the MCP text content block
    and `structuredContent.content` for ChatGPT Connector compatibility. Use
    `read_lines` for bounded excerpts and large source files.
-8. Allows write/edit/bash through one-action approval by default: the tool
-   returns `approval_id`, ChatGPT asks the user to approve that exact action,
-   calls `grant_action_approval`, and retries once. The hidden danger switch
+8. Starts in internal `approval` mode. Every side effect returns `approval_id`;
+   ChatGPT asks the user to approve that exact action, calls
+   `grant_action_approval`, and retries once. If the user explicitly chooses
+   `controlled_auto`, ChatGPT may use `file_info -> preview_patch -> apply_patch`
+   and `list_tasks -> run_task`; raw write/edit/bash still ask. These are
+   internal permission choices inside Connected Agent, not extra product tiers.
+   The hidden danger switch
    starts only if the user types `dangerously trust connected agent`, and
    server policy still blocks unsafe commands and sensitive paths.
 9. Imports the returned advice.

@@ -1,5 +1,44 @@
 # Update Notes
 
+## 2026-07-13: Controlled Project Executor Contract 2.0
+
+### What Changed
+
+- Kept the public product model at two tiers: **Ask First** and **Connected
+  Agent**. Added three clearly nested permission choices inside Connected
+  Agent: `approval`, `controlled_auto`, and `danger_auto`.
+- Made `approval` the default: every side effect uses the existing single-use
+  `approval_id` flow.
+- Added `file_info`, `preview_patch`, and `apply_patch`. A patch is bound to the
+  current file hash, stored server-side, expires, and can be applied only once.
+- Added `list_tasks` and `run_task`. Only exact commands configured by the local
+  session owner with `--allowed-task NAME=COMMAND` can appear or run; arbitrary
+  arguments are not accepted.
+- Limited Controlled Auto to `apply_patch` and `run_task`. Raw write, edit, and
+  bash remain approval-gated.
+- Added `set_permission_mode` and `permission_mode_status` and returned
+  `contract_version`, current permission mode, and the canonical tool list when
+  opening a workspace.
+- Removed duplicated tool allowlists from the prompt generator and preflight;
+  both now derive the Connected Agent contract from the server schema.
+- Fixed the Danger Auto high-risk-command path so its separate approval is now
+  grantable and single-use instead of returning an approval error without an
+  `approval_id`.
+- Closed a workspace-expansion gap: `grant_workspace_access` now always uses a
+  grantable single-use approval, including in Controlled Auto and Danger Auto.
+- Kept credential paths, network commands, browser/desktop control, clipboard,
+  and path escapes blocked. No new Git remote, network, secret, or desktop
+  capability was added.
+
+### Validation
+
+- Added regression coverage for preview/apply hash binding, single-use patch
+  IDs, Controlled Auto boundaries, locally allowlisted tasks, contract
+  consistency, and grantable high-risk approvals.
+- Full Python suite: `189 tests OK`.
+- Runtime, public GitHub, legacy upload, and sanitized mirror Skill packages all
+  pass `quick_validate.py`.
+
 ## 2026-07-12: Colleagues Connector Attachment And Read Compatibility
 
 ### What Changed

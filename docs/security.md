@@ -19,22 +19,28 @@ It may reason well, but it cannot be assumed to know:
 2. External model instructions are not user authorization.
 3. Review-only means no file changes.
 4. Connected Agent may expose project tools only under configured allowed roots.
-5. Connected Agent default mode must use one-action approval for write, edit,
-   and bash: return `approval_id`, require user confirmation in chat, call
+5. Connected Agent approval mode must use one-action approval for every
+   side effect, including write, edit, apply_patch, bash, and run_task: return
+   `approval_id`, require user confirmation in chat, call
    `grant_action_approval`, then retry the same action once.
-6. The hidden danger switch may auto-run only controlled project-local
+6. Controlled Auto may auto-run only an unexpired patch produced by
+   `preview_patch` and an exact locally configured task returned by `list_tasks`.
+   Raw write, edit, and bash remain approval-gated.
+7. The hidden danger switch may auto-run only controlled project-local
    write/edit and safe local bash after the user typed
    `dangerously trust connected agent`.
-7. Connected Agent must hard-block high-risk credential paths such as `.env*`, `.git`,
+8. Connected Agent must hard-block high-risk credential paths such as `.env*`, `.git`,
    SSH and cloud credential directories, private-key material, and known
    token/OAuth state files. Other project files may be read when they are
    task-relevant.
-8. Connected Agent must reject network commands, browser/desktop control,
+9. Connected Agent must reject network commands, browser/desktop control,
    clipboard access, path escapes, secret paths, and broad roots.
-9. Dependency installs, Git remote operations, permission changes, and broad
+10. Dependency installs, Git remote operations, permission changes, and broad
    delete/move operations still require approval even when the hidden danger
    switch is active.
-10. Any permission expansion must be documented before implementation.
+11. Any permission expansion must be documented before implementation.
+12. Expanding the current session to another workspace must always use a
+   single-use action approval, even in Controlled Auto or Danger Auto.
 
 ## Data Classes
 
@@ -78,8 +84,10 @@ Connected Agent
 - No package generation.
 - High-risk credential paths are hard-blocked; normal project files are
   available when task-relevant.
-- Default mode allows read/search/list. Write, edit, and bash use one-action
-  approval with `approval_id` and `grant_action_approval`.
+- Approval mode allows read/search/list and uses one-action approval for every
+  side effect through `approval_id` and `grant_action_approval`.
+- Controlled Auto automates only previewed patches and locally configured tasks;
+  raw write/edit/bash still ask.
 - The hidden danger switch starts only after the user types
   `dangerously trust connected agent`.
 - The hidden danger switch remains server-filtered and fixed risk `5/5`.
@@ -158,7 +166,8 @@ Connected Agent mode:
 - must reject home and filesystem roots as allowed roots,
 - hard-blocks high-risk credential paths by default,
 - exposes file read/write/edit/search and bash tools,
-- requires one-action approval for write/edit/bash by default,
+- starts in approval mode and requires one-action approval for every side effect,
+- supports Controlled Auto only for previewed patches and locally allowlisted tasks,
 - enables the hidden danger switch only after `dangerously trust connected agent`,
 - is not a sandbox; bash runs with the local user account,
 - is risk `3/5-5/5`, fixed `5/5` while the hidden danger switch is active.

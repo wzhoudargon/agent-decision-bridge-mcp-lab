@@ -65,6 +65,13 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     prepare.add_argument("question", help="User's Connected Agent consultation request.")
     prepare.add_argument("--allowed-root", required=True, help="Workspace root to expose.")
     prepare.add_argument(
+        "--allowed-task",
+        action="append",
+        default=[],
+        metavar="NAME=COMMAND",
+        help="Expose one exact local test/lint/build task to Controlled Auto.",
+    )
+    prepare.add_argument(
         "--public-base-url",
         default=os.environ.get("DECISION_INBOX_PUBLIC_BASE_URL"),
         help="Public HTTPS origin without /mcp.",
@@ -321,7 +328,7 @@ def refresh_idle_window() -> subprocess.CompletedProcess[str]:
 
 
 def build_open_command(args: argparse.Namespace) -> List[str]:
-    return [
+    command = [
         sys.executable,
         str(CONNECTED_AGENT_SESSION),
         "open",
@@ -342,6 +349,9 @@ def build_open_command(args: argparse.Namespace) -> List[str]:
         "--preflight-retry-seconds",
         str(args.preflight_retry_seconds),
     ]
+    for allowed_task in args.allowed_task:
+        command.extend(["--allowed-task", allowed_task])
+    return command
 
 
 def apply_speed_profile(args: argparse.Namespace) -> None:
