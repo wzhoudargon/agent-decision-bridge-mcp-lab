@@ -106,7 +106,7 @@ def summarize_state(session_output: str, funnel_output: str, gate_message: str) 
         lines.append("Risk now: 2/5 if OAuth state remains, otherwise 1/5.")
     elif not session_closed:
         lines.append("Exposure now: Connected Agent session may be open.")
-        lines.append("Risk now: 3/5-5/5 until closed.")
+        lines.append("Risk now: 4/5-5/5 until closed.")
     else:
         lines.append("Exposure now: session closed; inspect Funnel status below.")
 

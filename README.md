@@ -13,12 +13,15 @@ web model into unchecked local authority.
 | Mode | Best for | Connector exposure | Default risk |
 |---|---|---:|---:|
 | Ask First | Deep manual review with GPT Pro, Claude, Gemini, or another advisor | None | `1/5` |
-| Connected Agent | Letting ChatGPT Web inspect an allowed project root through MCP | Short-lived authenticated project window | `3/5-5/5` |
+| Connected Agent | Letting ChatGPT Web inspect an allowed project root through MCP | Short-lived authenticated project window | `4/5-5/5` |
 
 Ask First produces a focused review package for manual advisor review.
 Connected Agent opens a bounded project window so ChatGPT Web can list, search,
 read, and act on task-relevant files inside an allowed root as a controlled
-project executor. It starts in approval mode, so every side effect asks first.
+project executor. Opening the second tier starts Controlled Auto: previewed
+patches, immutable prepared actions, and owner-configured tasks use bounded
+single-use commits. Normal write/edit/bash work uses one ChatGPT-native
+confirmation without copying an approval id or replaying full parameters.
 
 External advice is never authorization. Codex remains the local fact checker and
 executor, and the current user remains the only authority for side effects.
@@ -96,18 +99,26 @@ The normal flow is:
    `Need info`.
 7. The session is closed manually or by idle timeout.
 
-Connected Agent has three internal permission modes. These are not additional
-product tiers:
+Connected Agent exposes two user-facing permission choices:
 
 | Internal mode | Plain-language behavior | Automatic side effects |
 |---|---|---|
-| Approval | Default. Show the exact action and ask every time. | None |
-| Controlled Auto | Recommended for bounded execution. Apply only an already previewed file change or run an owner-configured task. | `apply_patch`, `run_task` only |
+| Controlled Auto | Default when the user opens the second tier. Apply a preview, commit one immutable prepared action, or run an owner-configured task. | `apply_patch`, `commit_action`, `run_task` |
 | Danger Auto | Hidden 5/5 session switch. Allows broader project-local automation. | Safe local write/edit/bash, while high-risk classes still ask |
 
-The safer editing path is `file_info -> preview_patch -> apply_patch`. The safer
-command path is `list_tasks -> run_task`; tasks must be configured locally when
-the session starts, and the web model cannot add arguments or invent a command.
+The bounded whole-file path is `file_info -> preview_patch -> apply_patch`.
+File creation, targeted edit, and ordinary project-local bash use
+`prepare_action -> commit_action`; the server stores the complete immutable
+action, so the commit sends only a single-use `action_id`. The safer configured
+command path remains `list_tasks -> run_task`.
+`preview_patch` returns a single-use `preview_id` bound to the workspace, path,
+base hash, result hash, diff, and expiry. The bounded ChatGPT session helper
+starts the server with `previewed_patch_confirmation=host_native_once`: after the
+diff is shown, ChatGPT's native connector dialog is the only confirmation for
+`apply_patch`; the same host-native rule applies to `commit_action`. Direct
+MCP/server starts remain conservative and use `server_one_action_approval`
+unless explicitly configured otherwise. Raw write/edit/bash remain legacy
+compatibility tools, not the normal Controlled Auto path.
 
 Connected Agent does not automatically give Codex an outbound GPT Pro call. If
 Codex cannot reach a real advisor channel, the correct state is
@@ -121,8 +132,11 @@ Agent Decision Bridge is built around explicit boundaries:
 - home and filesystem roots are rejected,
 - `.env*`, `.git`, SSH/cloud credentials, private-key material, and known token
   or OAuth state files are blocked,
-- all side effects require one-action approval in the default internal mode,
-- Controlled Auto can automate only previewed patches and locally allowlisted tasks,
+- raw side effects retain hidden one-action server approval as a legacy
+  compatibility path; host-confirmed previewed patches and prepared actions
+  retain single-use binding and stale-state checks,
+- Controlled Auto can automate only previewed patches, immutable prepared
+  actions, and locally allowlisted tasks,
 - dependency installation, Git remote operations, broad destructive actions,
   browser/desktop control, clipboard access, network commands, and path escapes
   are denied or approval-gated,

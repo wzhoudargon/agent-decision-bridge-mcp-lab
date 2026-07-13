@@ -25,6 +25,8 @@ class FullAgentSessionTests(unittest.TestCase):
             "public_base_url": "https://connected-agent.example.com",
             "allowed_roots": [str(Path(tempdir) / "workspace")],
             "allowed_tasks": [],
+            "server_approval_for_previewed_patches": False,
+            "start_in_approval_fallback": False,
             "tailscale_bin": "tailscale",
             "socket": "/tmp/test-tailscale.sock",
             "idle_timeout_seconds": session.DEFAULT_IDLE_TIMEOUT_SECONDS,
@@ -62,6 +64,12 @@ class FullAgentSessionTests(unittest.TestCase):
         self.assertIn(str(workspace), command)
         self.assertIn("--public-base-url", command)
         self.assertIn("https://connected-agent.example.com", command)
+        self.assertIn("--trust-host-confirmation-for-previewed-patches", command)
+        self.assertIn("--initial-permission-mode", command)
+        self.assertEqual(
+            command[command.index("--initial-permission-mode") + 1],
+            "controlled_auto",
+        )
 
     def test_build_server_command_forwards_allowed_tasks(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -83,6 +91,74 @@ class FullAgentSessionTests(unittest.TestCase):
             command = session.build_server_command(args)
 
         self.assertEqual(command[command.index("--mode") + 1], "full-agent")
+        self.assertNotIn("--trust-host-confirmation-for-previewed-patches", command)
+
+    def test_build_server_command_can_keep_server_patch_approval(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            args = self.make_args(
+                tempdir,
+                server_approval_for_previewed_patches=True,
+            )
+
+            command = session.build_server_command(args)
+
+        self.assertNotIn("--trust-host-confirmation-for-previewed-patches", command)
+
+    def test_build_server_command_can_start_in_hidden_approval_fallback(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            args = self.make_args(tempdir, start_in_approval_fallback=True)
+
+            command = session.build_server_command(args)
+
+        self.assertNotIn("--initial-permission-mode", command)
+        self.assertEqual(
+            session.risk_coefficient_for_mode("connected-agent", "approval"),
+            "3/5-5/5",
+        )
+
+    def test_legacy_session_state_defaults_to_hidden_approval_fallback(self):
+        state = {"mode": "connected-agent"}
+
+        self.assertEqual(session.state_initial_permission_mode(state), "approval")
+        self.assertEqual(session.risk_coefficient_for_state(state), "3/5-5/5")
+
+    def test_open_restarts_live_session_when_permission_default_changed(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            args = self.make_args(tempdir)
+            session.save_state(
+                args.state_file,
+                {
+                    "mode": "connected-agent",
+                    "initial_permission_mode": "approval",
+                    "server_pid": 12345,
+                },
+            )
+
+            with mock.patch.object(session, "is_pid_running", return_value=True):
+                with mock.patch.object(session, "close_session", return_value=9) as close:
+                    status = session.open_session(args)
+
+        self.assertEqual(status, 9)
+        close.assert_called_once_with(args)
+
+    def test_existing_session_configuration_compares_visible_default(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            args = self.make_args(tempdir)
+            controlled_state = {
+                "mode": "connected-agent",
+                "initial_permission_mode": "controlled_auto",
+            }
+            approval_state = {
+                "mode": "connected-agent",
+                "initial_permission_mode": "approval",
+            }
+
+        self.assertTrue(
+            session.existing_session_matches_request(controlled_state, args)
+        )
+        self.assertFalse(
+            session.existing_session_matches_request(approval_state, args)
+        )
 
     def test_open_requires_allowed_root(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -152,7 +228,7 @@ class FullAgentSessionTests(unittest.TestCase):
         self.assertIn("connector_tools_verified=verified_by_preflight", summary)
         self.assertIn("advisor_channel_verified=not_checked_by_session_helper", summary)
         self.assertIn("session_online=yes", summary)
-        self.assertIn("risk=3/5-5/5", summary)
+        self.assertIn("risk=4/5-5/5", summary)
         self.assertIn("risk=5/5", session.product_readiness_summary(preflight_ran=True, mode="full-agent"))
 
     def test_flush_dns_cache_best_effort_uses_macos_cache_flush(self):
@@ -250,6 +326,8 @@ class FullAgentSessionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempdir:
             args = self.make_args(tempdir, idle_timeout_seconds=600)
             state = {
+                "mode": "connected-agent",
+                "initial_permission_mode": "controlled_auto",
                 "server_pid": os.getpid(),
                 "public_base_url": "https://connected-agent.example.com",
                 "last_activity": 1000,

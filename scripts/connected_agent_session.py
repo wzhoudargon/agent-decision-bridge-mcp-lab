@@ -74,6 +74,23 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
             "Can be passed multiple times."
         ),
     )
+    parser.add_argument(
+        "--server-approval-for-previewed-patches",
+        action="store_true",
+        help=(
+            "Keep legacy server approval_id flows for bounded apply_patch and "
+            "commit_action calls. By default this ChatGPT session helper uses "
+            "one host-native confirmation for those single-use commits."
+        ),
+    )
+    parser.add_argument(
+        "--start-in-approval-fallback",
+        action="store_true",
+        help=(
+            "Start the product session in the low-level server approval fallback. "
+            "By default, explicitly opening the second tier starts Controlled Auto."
+        ),
+    )
     parser.add_argument("--tailscale-bin", default="tailscale")
     parser.add_argument("--socket", default=DEFAULT_TAILSCALE_SOCKET)
     parser.add_argument(
@@ -160,7 +177,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 
 def open_session(args: argparse.Namespace) -> int:
-    risk_while_open = risk_coefficient_for_mode(args.mode)
+    initial_permission_mode = requested_initial_permission_mode(args)
+    risk_while_open = risk_coefficient_for_mode(args.mode, initial_permission_mode)
     if not args.allowed_roots:
         print("Current state: connected_agent_session_failed")
         print(f"Risk coefficient: {risk_while_open} if opened")
@@ -179,13 +197,23 @@ def open_session(args: argparse.Namespace) -> int:
 
     existing = load_state(args.state_file)
     if existing and is_pid_running(existing.get("server_pid")):
-        existing["idle_timeout_seconds"] = args.idle_timeout_seconds
-        update_last_activity(args.state_file, existing)
-        print("Current state: connected_agent_session_already_open")
-        print(f"Risk coefficient while open: {risk_coefficient_for_state(existing)}")
-        print(f"Idle shutdown: {existing.get('idle_timeout_seconds')} seconds after last touch")
-        print(f"Public MCP URL: {mcp_url(existing) or 'local-only'}")
-        return 0
+        if not existing_session_matches_request(existing, args):
+            print("Current state: connected_agent_session_reconfiguring")
+            print(
+                "Reason: the active session mode does not match the requested "
+                "permission configuration."
+            )
+            close_result = close_session(args)
+            if close_result != 0:
+                return close_result
+        else:
+            existing["idle_timeout_seconds"] = args.idle_timeout_seconds
+            update_last_activity(args.state_file, existing)
+            print("Current state: connected_agent_session_already_open")
+            print(f"Risk coefficient while open: {risk_coefficient_for_state(existing)}")
+            print(f"Idle shutdown: {existing.get('idle_timeout_seconds')} seconds after last touch")
+            print(f"Public MCP URL: {mcp_url(existing) or 'local-only'}")
+            return 0
 
     ensure_private_dir(args.state_file.parent)
     ensure_private_dir(args.server_log.parent)
@@ -221,6 +249,7 @@ def open_session(args: argparse.Namespace) -> int:
         "public_base_url": normalize_public_base_url(args.public_base_url),
         "allowed_roots": [str(Path(item).expanduser()) for item in args.allowed_roots],
         "allowed_tasks": list(args.allowed_tasks),
+        "initial_permission_mode": initial_permission_mode,
         "tailscale_bin": None if args.local_only else args.tailscale_bin,
         "tailscale_socket": None if args.local_only else args.socket,
         "idle_timeout_seconds": args.idle_timeout_seconds,
@@ -373,14 +402,40 @@ def close_session(args: argparse.Namespace, from_watchdog: bool = False) -> int:
     return result
 
 
-def risk_coefficient_for_mode(mode: str) -> str:
+def risk_coefficient_for_mode(
+    mode: str, initial_permission_mode: str = "controlled_auto"
+) -> str:
     if mode == "full-agent":
         return "5/5"
-    return "3/5-5/5"
+    if mode == "connected-agent" and initial_permission_mode == "approval":
+        return "3/5-5/5"
+    return "4/5-5/5"
 
 
 def risk_coefficient_for_state(state: Dict[str, Any]) -> str:
-    return risk_coefficient_for_mode(str(state.get("mode") or DEFAULT_MODE))
+    return risk_coefficient_for_mode(
+        str(state.get("mode") or DEFAULT_MODE),
+        state_initial_permission_mode(state),
+    )
+
+
+def requested_initial_permission_mode(args: argparse.Namespace) -> str:
+    return "approval" if args.start_in_approval_fallback else "controlled_auto"
+
+
+def state_initial_permission_mode(state: Dict[str, Any]) -> str:
+    # Session files created before this field existed used the old Approval default.
+    return str(state.get("initial_permission_mode") or "approval")
+
+
+def existing_session_matches_request(
+    state: Dict[str, Any], args: argparse.Namespace
+) -> bool:
+    if str(state.get("mode") or DEFAULT_MODE) != args.mode:
+        return False
+    if args.mode != "connected-agent":
+        return True
+    return state_initial_permission_mode(state) == requested_initial_permission_mode(args)
 
 
 def build_server_command(args: argparse.Namespace) -> List[str]:
@@ -400,6 +455,10 @@ def build_server_command(args: argparse.Namespace) -> List[str]:
         command.extend(["--allowed-root", str(Path(allowed_root).expanduser())])
     for allowed_task in args.allowed_tasks:
         command.extend(["--allowed-task", allowed_task])
+    if args.mode == "connected-agent" and not args.start_in_approval_fallback:
+        command.extend(["--initial-permission-mode", "controlled_auto"])
+    if args.mode == "connected-agent" and not args.server_approval_for_previewed_patches:
+        command.append("--trust-host-confirmation-for-previewed-patches")
     if args.oauth_state_file:
         command.extend(["--oauth-state-file", args.oauth_state_file])
     if args.oauth_owner_token_file:

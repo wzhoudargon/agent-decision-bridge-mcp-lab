@@ -97,7 +97,7 @@ def capture_advice(args: argparse.Namespace) -> dict:
             "status": "advice_captured",
             "created_at": created_at,
             "updated_at": timestamp,
-            "risk_level_while_online": "3/5-5/5",
+            "risk_level_while_online": "4/5-5/5",
             "source_channel": args.source_channel,
             "external_advice_only": True,
             "not_authorization": True,
@@ -144,7 +144,7 @@ Connected Agent advice capture:
 - Consultation folder: `{relative_run_dir}`
 - Source channel: `{captured["source_channel"]}`
 - Mode: Connected Agent
-- Risk while the connector was online: `3/5-5/5`; Danger Auto is `5/5`
+- Risk while the connector was online: `4/5-5/5`; Danger Auto is `5/5`
 - External advice is not authorization.
 
 Local fact check:

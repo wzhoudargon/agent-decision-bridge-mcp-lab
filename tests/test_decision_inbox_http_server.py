@@ -179,6 +179,17 @@ class DecisionInboxHttpServerTests(unittest.TestCase):
         self.assertIn("Ask First mode", output)
         self.assertIn("No HTTP MCP server was started", output)
 
+    def test_connected_agent_authorization_warning_describes_bounded_commits(self):
+        handler = object.__new__(http_srv.DecisionInboxMCPHandler)
+        handler.server = mock.Mock(connected_agent_enabled=True)
+
+        warning = handler._authorization_warning()
+
+        self.assertIn("Risk 4/5-5/5", warning)
+        self.assertIn("Read/search are automatic", warning)
+        self.assertIn("one host-native confirmation", warning)
+        self.assertIn("raw write, edit, and bash retain server approval", warning)
+
     def test_invalid_origin_is_rejected(self):
         request = self._request({"jsonrpc": "2.0", "id": 5, "method": "tools/list"})
         request.add_header("Origin", "https://evil.example")
@@ -536,23 +547,25 @@ class DecisionInboxHttpServerTests(unittest.TestCase):
                 [tool["name"] for tool in tools["result"]["tools"]],
                 [
                     "open_default_workspace",
-                "open_workspace",
-                "ls",
-                "read",
-                "read_lines",
-                "file_info",
-                "preview_patch",
-                "apply_patch",
-                "list_tasks",
-                "run_task",
-                "write",
-                "edit",
-                "grep",
-                "glob",
-                "bash",
-                "set_permission_mode",
-                "permission_mode_status",
-                "enable_danger_auto",
+                    "open_workspace",
+                    "ls",
+                    "read",
+                    "read_lines",
+                    "prepare_action",
+                    "commit_action",
+                    "file_info",
+                    "preview_patch",
+                    "apply_patch",
+                    "list_tasks",
+                    "run_task",
+                    "write",
+                    "edit",
+                    "grep",
+                    "glob",
+                    "bash",
+                    "set_permission_mode",
+                    "permission_mode_status",
+                    "enable_danger_auto",
                     "danger_auto_status",
                     "disable_danger_auto",
                     "grant_action_approval",
@@ -646,6 +659,134 @@ class DecisionInboxHttpServerTests(unittest.TestCase):
                 headers={"Authorization": "Bearer connected-token"},
             )
             self.assertTrue(enabled["result"]["structuredContent"]["danger_auto_enabled"])
+        finally:
+            connected_server.shutdown()
+            connected_server.server_close()
+            thread.join(timeout=2)
+
+    def test_connected_agent_http_can_use_one_host_confirmed_patch_commit(self):
+        project_root = Path(self.tempdir.name) / "project-host-confirmed-http"
+        project_root.mkdir()
+        (project_root / "README.md").write_text("before\n", encoding="utf-8")
+        connected_server = http_srv.create_server(
+            host="127.0.0.1",
+            port=0,
+            tasks_root=self.tasks_root,
+            auth_token="connected-token",
+            allowed_origins=["https://chatgpt.com"],
+            mode=http_srv.MODE_CONNECTED_AGENT,
+            allowed_roots=[project_root],
+            trust_host_confirmation_for_previewed_patches=True,
+            initial_permission_mode=http_srv.PERMISSION_CONTROLLED_AUTO,
+        )
+        thread = threading.Thread(target=connected_server.serve_forever, daemon=True)
+        thread.start()
+        base = f"http://127.0.0.1:{connected_server.server_port}/mcp"
+        try:
+            opened = self._post_json(
+                base,
+                {
+                    "jsonrpc": "2.0",
+                    "id": 60,
+                    "method": "tools/call",
+                    "params": {"name": "open_default_workspace", "arguments": {}},
+                },
+                headers={"Authorization": "Bearer connected-token"},
+            )
+            opened_content = opened["result"]["structuredContent"]
+            self.assertEqual(
+                opened_content["previewed_patch_confirmation"], "host_native_once"
+            )
+            self.assertEqual(
+                opened_content["prepared_action_confirmation"], "host_native_once"
+            )
+            self.assertEqual(
+                opened_content["permission_mode"],
+                http_srv.PERMISSION_CONTROLLED_AUTO,
+            )
+            workspace_id = opened_content["workspace_id"]
+            info = connected_server.full_agent_manager.file_info(
+                workspace_id, "README.md"
+            )
+            preview = connected_server.full_agent_manager.preview_patch(
+                workspace_id,
+                "README.md",
+                "after\n",
+                info["sha256"],
+            )
+
+            applied = self._post_json(
+                base,
+                {
+                    "jsonrpc": "2.0",
+                    "id": 61,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "apply_patch",
+                        "arguments": {
+                            "workspace_id": workspace_id,
+                            "preview_id": preview["preview_id"],
+                        },
+                    },
+                },
+                headers={"Authorization": "Bearer connected-token"},
+            )
+
+            self.assertFalse(applied["result"]["isError"])
+            self.assertEqual(
+                applied["result"]["structuredContent"]["confirmation"],
+                "host_native_once",
+            )
+            self.assertEqual(
+                (project_root / "README.md").read_text(encoding="utf-8"),
+                "after\n",
+            )
+
+            prepared = self._post_json(
+                base,
+                {
+                    "jsonrpc": "2.0",
+                    "id": 62,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "prepare_action",
+                        "arguments": {
+                            "workspace_id": workspace_id,
+                            "action_type": "write",
+                            "path": "created-through-http.txt",
+                            "content": "bound http action\n",
+                        },
+                    },
+                },
+                headers={"Authorization": "Bearer connected-token"},
+            )
+            prepared_content = prepared["result"]["structuredContent"]
+            self.assertFalse(prepared["result"]["isError"])
+            self.assertEqual(prepared_content["status"], "prepared")
+
+            committed = self._post_json(
+                base,
+                {
+                    "jsonrpc": "2.0",
+                    "id": 63,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "commit_action",
+                        "arguments": {
+                            "workspace_id": workspace_id,
+                            "action_id": prepared_content["action_id"],
+                        },
+                    },
+                },
+                headers={"Authorization": "Bearer connected-token"},
+            )
+            self.assertFalse(committed["result"]["isError"])
+            self.assertEqual(
+                (project_root / "created-through-http.txt").read_text(
+                    encoding="utf-8"
+                ),
+                "bound http action\n",
+            )
         finally:
             connected_server.shutdown()
             connected_server.server_close()

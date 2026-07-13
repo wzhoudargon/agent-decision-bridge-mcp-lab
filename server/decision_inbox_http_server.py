@@ -23,6 +23,8 @@ try:
     from server.decision_inbox_store import DecisionInboxStore, default_tasks_root
     from server.connected_agent_server import (
         FullAgentWorkspaceManager,
+        PERMISSION_APPROVAL,
+        PERMISSION_CONTROLLED_AUTO,
         PROFILE_CONNECTED_AGENT,
         PROFILE_FULL_AGENT,
         PROFILE_READ_ONLY_PROJECT,
@@ -34,6 +36,8 @@ except ModuleNotFoundError:
     from decision_inbox_store import DecisionInboxStore, default_tasks_root  # type: ignore
     from connected_agent_server import (  # type: ignore
         FullAgentWorkspaceManager,
+        PERMISSION_APPROVAL,
+        PERMISSION_CONTROLLED_AUTO,
         PROFILE_CONNECTED_AGENT,
         PROFILE_FULL_AGENT,
         PROFILE_READ_ONLY_PROJECT,
@@ -702,10 +706,11 @@ class DecisionInboxMCPHandler(BaseHTTPRequestHandler):
     def _authorization_warning(self) -> str:
         if self.server.connected_agent_enabled:
             return (
-                "Risk 3/5-5/5: approve only if you intentionally want ChatGPT "
-                "to connect to local project workspaces. Read/search are allowed "
-                "by default; write, edit, and bash require approval unless Danger "
-                "Auto is explicitly enabled by the user."
+                "Risk 4/5-5/5: approve only if you intentionally want ChatGPT "
+                "to connect to local project workspaces. Read/search are automatic. "
+                "The bounded product helper may use one host-native confirmation for "
+                "a previewed patch or immutable prepared action; raw write, edit, and "
+                "bash retain server approval unless Danger Auto is explicitly enabled."
             )
         if self.server.full_agent_enabled:
             return (
@@ -879,6 +884,8 @@ def create_server(
     mode: str = MODE_AUTO_MCP,
     allowed_roots: Optional[List[Path]] = None,
     allowed_tasks: Optional[Dict[str, str]] = None,
+    trust_host_confirmation_for_previewed_patches: bool = False,
+    initial_permission_mode: str = PERMISSION_APPROVAL,
 ) -> DecisionInboxHTTPServer:
     normalized_mode = normalize_mode(mode)
     if normalized_mode in {MODE_MANUAL, MODE_ASK_FIRST}:
@@ -898,6 +905,10 @@ def create_server(
             allowed_roots or [],
             profile=workspace_profile,
             allowed_tasks=allowed_tasks,
+            trust_host_confirmation_for_previewed_patches=(
+                trust_host_confirmation_for_previewed_patches
+            ),
+            initial_permission_mode=initial_permission_mode,
         )
         if workspace_profile
         else None
@@ -1121,6 +1132,24 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--trust-host-confirmation-for-previewed-patches",
+        action="store_true",
+        help=(
+            "Use the MCP host's native write confirmation as the sole approval for "
+            "single-use preview_patch/apply_patch and prepare_action/commit_action "
+            "commits. Intended for the bounded ChatGPT Connected Agent helper."
+        ),
+    )
+    parser.add_argument(
+        "--initial-permission-mode",
+        choices=[PERMISSION_APPROVAL, PERMISSION_CONTROLLED_AUTO],
+        default=PERMISSION_APPROVAL,
+        help=(
+            "Initial Connected Agent permission mode. Direct starts default to the "
+            "hidden approval fallback; the product helper passes controlled_auto."
+        ),
+    )
+    parser.add_argument(
         "--allow-origin",
         action="append",
         dest="allowed_origins",
@@ -1239,6 +1268,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         allowed_roots=args.allowed_roots
         or parse_path_list(os.environ.get("AGENT_BRIDGE_ALLOWED_ROOTS")),
         allowed_tasks=parse_allowed_tasks(args.allowed_task),
+        trust_host_confirmation_for_previewed_patches=(
+            args.trust_host_confirmation_for_previewed_patches
+        ),
+        initial_permission_mode=args.initial_permission_mode,
     )
     print(f"Agent Decision Bridge MCP HTTP server listening on http://{args.host}:{args.port}/mcp")
     print(f"Mode: {server.mode}")
@@ -1265,10 +1298,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             + ", ".join(str(root) for root in server.full_agent_manager.allowed_roots)
         )
     if server.mode == MODE_CONNECTED_AGENT and server.full_agent_manager:
-        print("Risk coefficient: 3/5-5/5")
+        print(f"Risk coefficient: {server.full_agent_manager.risk_level}")
         print(
-            "Risk reason: connected-agent exposes local project read/search by default; "
-            "write/edit/bash require approval unless session-only Danger Auto is enabled."
+            "Risk reason: connected-agent exposes local project read/search; the product "
+            "helper starts in Controlled Auto for previewed patches, immutable prepared "
+            "actions, and owner-configured tasks; raw write/edit/bash are legacy "
+            "approval-gated compatibility tools."
         )
         print("Danger Auto phrase: dangerously trust connected agent")
         print(

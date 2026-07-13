@@ -124,7 +124,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"connected_agent_consultation_prompt: {exc}", file=sys.stderr)
         return 1
     print("Current state: connected_agent_prompt_ready")
-    print("Risk if opened: 3/5-5/5")
+    print("Risk if opened: 4/5-5/5")
     exit_code = 0
     if args.clipboard:
         try:
@@ -170,11 +170,11 @@ Connector steps:
 3. Use only connector tools. For context inspection, use ls, glob, grep, read, read_lines, and file_info. Prefer source files over generated assets: skip node_modules, dist/build outputs, image galleries, sourcemaps, and lockfile-sized dependency artifacts unless Codex explicitly asks for them. Whole-file read is intended for task-relevant UTF-8 files up to the server limit; for larger source files, use grep to locate relevant symbols and read_lines for bounded 1-based line ranges. Do not use Python, browser file checks, uploads, screenshots, or chat-only guesses.
 4. Protected boundary. Do not read, search, write, edit, or run commands against:
 {protected_list}
-5. Connected Agent is the second product tier and has three internal permission modes, not three product tiers:
-   - approval: the default; every side-effectful write, edit, apply_patch, bash, or run_task needs one-action approval.
-   - controlled_auto: only a patch already shown by preview_patch and a task returned by list_tasks may run automatically. Raw write, edit, and bash still need approval. Call set_permission_mode only after the user clearly confirms this mode in the current chat.
+5. Connected Agent is the second product tier and exposes exactly two user-facing permission choices:
+   - controlled_auto: the default when the user opens the second tier. Only a patch shown by preview_patch, an immutable action stored by prepare_action, or a task returned by list_tasks may run through the bounded commit paths. Raw write, edit, and bash are legacy compatibility tools, not the normal Controlled Auto path.
    - danger_auto: the hidden 5/5 switch described below.
-6. Prefer the controlled executor path for project changes: call file_info, then preview_patch, show the diff, then apply_patch. For tests, lint, or builds, call list_tasks and use run_task only for an exact returned task name. Never invent a task or add arbitrary arguments. In approval mode, if a side-effectful tool returns approval_id, show the exact action, impact, and approval_id; wait for the user's explicit approval; call grant_action_approval; retry the exact original call once with the same approval_id.
+   A low-level direct client may report `server_approval_fallback_active=true`; that is an internal safety fallback, not a third user-facing mode. In that case, call set_permission_mode with `controlled_auto` only after clear user confirmation.
+6. Prefer bound prepare/commit workflows. For an existing-file whole replacement, call file_info, preview_patch, show the diff, then apply_patch with its single-use preview_id. For file creation, targeted edit, or ordinary project-local bash, call prepare_action with the complete intended parameters, show its returned action and diff, then call commit_action once using only the same workspace_id and single-use action_id. When `previewed_patch_confirmation` or `prepared_action_confirmation` is `host_native_once`, the write-annotated apply/commit call and ChatGPT's native connector dialog are the only user confirmation; do not call grant_action_approval and do not regenerate the original content, find/replace text, or command. A low-level `server_one_action_approval` client may ask for approval on the small apply/commit call; grant and retry only that unchanged token call. Do not use raw write, edit, or bash for ordinary Controlled Auto work. For tests, lint, or builds, prefer list_tasks and use run_task only for an exact returned task name. Never invent a task or add arbitrary arguments.
 7. Danger Auto: if and only if the user typed `dangerously trust connected agent`, call enable_danger_auto with that phrase. Danger Auto may auto-run project-local write/edit and safe local bash, but server policy still blocks network commands, GUI/desktop control, clipboard access, secret paths, path escapes, and keeps dependency installs, Git remote operations, and broad destructive actions separately approval-gated.
 8. If protected information seems necessary, stop and ask for a sanitized summary instead of trying to access it.
 
@@ -183,7 +183,7 @@ Reply in Chinese with:
 2. exactly which files were listed, searched, read, denied, or failed,
 3. `Adopt`, `Adapt`, `Reject`, and `Need info` recommendations,
 4. the two smallest fixes needed for smoother user use,
-5. any remaining risk, including the fact that Connected Agent is 3/5-5/5 while online and Danger Auto is 5/5.
+5. any remaining risk, including the fact that the default Controlled Auto session is 4/5-5/5 while online and Danger Auto is 5/5.
 """
 
 

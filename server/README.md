@@ -148,8 +148,9 @@ python3 server/decision_inbox_http_server.py \
   --oauth-owner-token-file /tmp/decision-inbox-oauth-owner-token
 ```
 
-Expected tools: `open_default_workspace`, `open_workspace`, `ls`, `read`,
-`read_lines`, `write`, `edit`, `grep`, `glob`, `bash`, `enable_danger_auto`,
+Expected tools include `open_default_workspace`, `open_workspace`, `ls`, `read`,
+`read_lines`, `prepare_action`, `commit_action`, `write`, `edit`, `grep`, `glob`,
+`bash`, `enable_danger_auto`,
 `danger_auto_status`, `disable_danger_auto`, `request_workspace_access`, and
 `grant_workspace_access`. Prefer `open_default_workspace` when exactly one
 allowed root is configured so the web advisor does not need to pass a local
@@ -159,7 +160,10 @@ as the no-local-path compatibility alias. This mode does not generate or serve
 a decision package. Whole-file `read` accepts normal task-relevant UTF-8 files
 up to 1 MB; larger source files should use targeted `grep` and bounded
 `read_lines` ranges.
-Write/edit/bash require approval by default. Danger Auto starts only after
+The product helper starts Controlled Auto for previewed patches, immutable
+prepared actions, and configured tasks. Raw write/edit/bash remain legacy
+approval-gated tools; direct server starts retain the internal approval
+fallback. Danger Auto starts only after
 `dangerously trust connected agent`.
 
 For tunnel/reverse-proxy runs, provide the public origin without `/mcp`:
@@ -252,7 +256,8 @@ the default Connected Agent auth files:
 python3 scripts/reset_decision_inbox_auth.py --connected-agent-defaults
 ```
 
-Risk coefficient for Connected Agent is `3/5-5/5`; Danger Auto is fixed `5/5`.
+Risk coefficient for the default Connected Agent product session is `4/5-5/5`;
+Danger Auto is fixed `5/5`.
 
 Before exposing the endpoint, run:
 

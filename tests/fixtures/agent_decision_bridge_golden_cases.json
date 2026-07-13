@@ -32,7 +32,7 @@
       "workflow": "connected-agent",
       "advisor_channel": "user-web",
       "state": "ready_to_open_connected_agent",
-      "risk": "3/5-5/5",
+      "risk": "4/5-5/5",
       "create_package": false,
       "side_effects_allowed": false,
       "next_action": "open_bounded_connector_window"
@@ -45,7 +45,7 @@
       "workflow": "connected-agent",
       "advisor_channel": "unknown",
       "state": "waiting_for_advisor_channel",
-      "risk": "3/5-5/5",
+      "risk": "4/5-5/5",
       "create_package": false,
       "side_effects_allowed": false,
       "next_action": "restore_channel_or_fall_back_to_ask_first"

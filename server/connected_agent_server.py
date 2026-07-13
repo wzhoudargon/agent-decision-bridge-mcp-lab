@@ -18,8 +18,8 @@ from typing import Any, Dict, Iterable, List, Optional
 
 PROTOCOL_VERSION = "2025-11-25"
 SERVER_NAME = "agent-decision-bridge-connected-agent"
-SERVER_VERSION = "0.2.0"
-TOOL_CONTRACT_VERSION = "2.0"
+SERVER_VERSION = "0.4.2"
+TOOL_CONTRACT_VERSION = "2.1"
 MAX_COMMAND_SECONDS = 30
 MAX_COMMAND_OUTPUT_BYTES = 200_000
 MAX_READ_FILE_BYTES = 1_000_000
@@ -32,6 +32,7 @@ DANGER_AUTO_PHRASE = "dangerously trust connected agent"
 DANGER_AUTO_IDLE_SECONDS = 1200
 ACTION_APPROVAL_IDLE_SECONDS = 1200
 PATCH_PREVIEW_IDLE_SECONDS = 1200
+PREPARED_ACTION_IDLE_SECONDS = 1200
 PERMISSION_APPROVAL = "approval"
 PERMISSION_CONTROLLED_AUTO = "controlled_auto"
 PERMISSION_DANGER_AUTO = "danger_auto"
@@ -40,7 +41,7 @@ VALID_PERMISSION_MODES = {
     PERMISSION_CONTROLLED_AUTO,
     PERMISSION_DANGER_AUTO,
 }
-CONTROLLED_AUTO_TOOLS = {"apply_patch", "run_task"}
+CONTROLLED_AUTO_TOOLS = {"apply_patch", "commit_action", "run_task"}
 APPROVAL_CONFIRMATION_MARKERS = (
     "确认",
     "同意",
@@ -194,19 +195,34 @@ class FullAgentWorkspaceManager:
         allowed_roots: List[Path],
         profile: str = PROFILE_FULL_AGENT,
         allowed_tasks: Optional[Dict[str, str]] = None,
+        trust_host_confirmation_for_previewed_patches: bool = False,
+        initial_permission_mode: str = PERMISSION_APPROVAL,
     ):
         if profile not in VALID_PROFILES:
             raise ValueError(f"Unknown workspace profile: {profile}")
         self.profile = profile
         self.allowed_roots = validate_allowed_roots(allowed_roots)
         self.allowed_tasks = validate_allowed_tasks(allowed_tasks or {})
+        self.trust_host_confirmation_for_previewed_patches = bool(
+            trust_host_confirmation_for_previewed_patches
+        )
+        normalized_initial_mode = initial_permission_mode.strip().lower()
+        if normalized_initial_mode not in {
+            PERMISSION_APPROVAL,
+            PERMISSION_CONTROLLED_AUTO,
+        }:
+            raise ValueError(
+                "initial_permission_mode must be approval or controlled_auto"
+            )
+        self.base_permission_mode = normalized_initial_mode
         self.session_allowed_roots: List[Path] = []
         self.workspaces: Dict[str, Path] = {}
-        self.permission_mode = PERMISSION_APPROVAL
+        self.permission_mode = self.base_permission_mode
         self.session_last_activity = time.time()
         self.pending_action_approvals: Dict[str, Dict[str, Any]] = {}
         self.granted_action_approvals: Dict[str, Dict[str, Any]] = {}
         self.pending_patch_previews: Dict[str, Dict[str, Any]] = {}
+        self.pending_prepared_actions: Dict[str, Dict[str, Any]] = {}
 
     @property
     def danger_auto_enabled(self) -> bool:
@@ -216,7 +232,7 @@ class FullAgentWorkspaceManager:
     @danger_auto_enabled.setter
     def danger_auto_enabled(self, enabled: bool) -> None:
         self.permission_mode = (
-            PERMISSION_DANGER_AUTO if enabled else PERMISSION_APPROVAL
+            PERMISSION_DANGER_AUTO if enabled else self.base_permission_mode
         )
 
     @property
@@ -234,6 +250,18 @@ class FullAgentWorkspaceManager:
     @property
     def tool_names(self) -> List[str]:
         return [tool["name"] for tool in tool_definitions(self.profile)]
+
+    @property
+    def previewed_patch_confirmation(self) -> str:
+        if self.trust_host_confirmation_for_previewed_patches:
+            return "host_native_once"
+        return "server_one_action_approval"
+
+    @property
+    def prepared_action_confirmation(self) -> str:
+        if self.trust_host_confirmation_for_previewed_patches:
+            return "host_native_once"
+        return "server_one_action_approval"
 
     def open_default_workspace(self) -> Dict[str, Any]:
         self.touch()
@@ -261,12 +289,16 @@ class FullAgentWorkspaceManager:
             )
         elif self.profile == PROFILE_CONNECTED_AGENT:
             warning = (
-                "Connected Agent exposes project read/search tools by default. "
-                "It starts in approval mode, where side effects require one-action "
-                "approval. Controlled Auto may run only previewed patches and "
-                "owner-configured tasks automatically. "
-                "Protected credential-like paths and unsafe commands are blocked "
-                "by the server."
+                "Connected Agent exposes two user-facing permission choices: "
+                "Controlled Auto and Danger Auto. Controlled Auto may run only "
+                "previewed patches, immutable prepared actions, and owner-configured "
+                "tasks automatically. Use prepare_action then commit_action for one "
+                "host-native confirmation; raw write/edit/bash remain compatibility tools. "
+                "Protected credential-like paths and unsafe commands remain blocked."
+                if self.base_permission_mode == PERMISSION_CONTROLLED_AUTO
+                else "Connected Agent is running in the low-level server approval "
+                "fallback. Direct clients must explicitly enter Controlled Auto; "
+                "protected credential-like paths and unsafe commands remain blocked."
             )
         else:
             warning = (
@@ -282,6 +314,14 @@ class FullAgentWorkspaceManager:
             "profile": self.profile,
             "contract_version": TOOL_CONTRACT_VERSION,
             "permission_mode": self.permission_mode,
+            "visible_permission_modes": [
+                PERMISSION_CONTROLLED_AUTO,
+                PERMISSION_DANGER_AUTO,
+            ],
+            "server_approval_fallback_active": self.permission_mode
+            == PERMISSION_APPROVAL,
+            "previewed_patch_confirmation": self.previewed_patch_confirmation,
+            "prepared_action_confirmation": self.prepared_action_confirmation,
             "tools": self.tool_names,
             "risk_level": self.risk_level,
             "warning": warning,
@@ -289,6 +329,7 @@ class FullAgentWorkspaceManager:
 
     def list_directory(self, workspace_id: str, path_value: str = ".") -> List[Dict[str, Any]]:
         self.touch()
+        path_value = _normalize_optional_workspace_location(path_value, "path")
         target = self.resolve_workspace_path(workspace_id, path_value, must_exist=True)
         if not target.is_dir():
             raise AccessDenied("ls target must be a directory")
@@ -431,6 +472,8 @@ class FullAgentWorkspaceManager:
             "result_sha256": result_sha256,
             "diff": diff,
             "expires_after_idle_seconds": PATCH_PREVIEW_IDLE_SECONDS,
+            "commit_token": preview_id,
+            "commit_confirmation": self.previewed_patch_confirmation,
             "applied": False,
         }
 
@@ -464,7 +507,8 @@ class FullAgentWorkspaceManager:
             "diff_sha256": _sha256_text(preview["diff"]),
             "diff": preview["diff"],
         }
-        self._require_connected_action_approval("apply_patch", action, approval_id)
+        if not self.trust_host_confirmation_for_previewed_patches:
+            self._require_connected_action_approval("apply_patch", action, approval_id)
         new_content = preview["new_content"]
         target.write_text(new_content, encoding="utf-8")
         del self.pending_patch_previews[preview_id]
@@ -473,7 +517,359 @@ class FullAgentWorkspaceManager:
             "path": preview["path"],
             "bytes": len(new_content.encode("utf-8")),
             "sha256": preview["result_sha256"],
+            "confirmation": self.previewed_patch_confirmation,
             "applied": True,
+        }
+
+    def prepare_action(
+        self,
+        workspace_id: str,
+        action_type: str,
+        *,
+        path_value: Optional[str] = None,
+        content: Optional[str] = None,
+        find: Optional[str] = None,
+        replace: Optional[str] = None,
+        expected_replacements: Optional[int] = None,
+        command: Optional[str] = None,
+        cwd: str = ".",
+        timeout_seconds: int = MAX_COMMAND_SECONDS,
+    ) -> Dict[str, Any]:
+        """Store an immutable write/edit/bash action without executing it."""
+        self.touch()
+        self._require_connected_agent_tool("prepare_action")
+        self._expire_prepared_actions()
+        if not isinstance(action_type, str):
+            raise ValueError("action_type must be one of: write, edit, bash")
+        normalized_type = action_type.strip().lower()
+        if normalized_type == "write":
+            prepared = self._prepare_file_write(
+                workspace_id,
+                path_value,
+                content,
+            )
+        elif normalized_type == "edit":
+            prepared = self._prepare_file_edit(
+                workspace_id,
+                path_value,
+                find,
+                replace,
+                expected_replacements,
+            )
+        elif normalized_type == "bash":
+            prepared = self._prepare_bash_action(
+                workspace_id,
+                command,
+                cwd,
+                timeout_seconds,
+            )
+        else:
+            raise ValueError("action_type must be one of: write, edit, bash")
+        action_id = f"action-{uuid.uuid4().hex}"
+        prepared["action_id"] = action_id
+        prepared["created_at"] = time.time()
+        prepared["fingerprint"] = _action_fingerprint(prepared["action"])
+        self.pending_prepared_actions[action_id] = prepared
+        result = {
+            "status": "prepared",
+            "action_id": action_id,
+            "commit_token": action_id,
+            "action_type": prepared["action_type"],
+            "action": prepared["action"],
+            "fingerprint": prepared["fingerprint"],
+            "expires_after_idle_seconds": PREPARED_ACTION_IDLE_SECONDS,
+            "commit_confirmation": self.prepared_action_confirmation,
+            "single_use": True,
+            "committed": False,
+        }
+        if prepared.get("diff") is not None:
+            result["diff"] = prepared["diff"]
+        return result
+
+    def commit_action(
+        self,
+        workspace_id: str,
+        action_id: str,
+        approval_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Execute one immutable prepared action using only its bound token."""
+        self.touch()
+        self._require_connected_agent_tool("commit_action")
+        self._expire_prepared_actions()
+        prepared = self.pending_prepared_actions.get(action_id)
+        if not prepared:
+            raise AccessDenied("action_id is unknown, expired, or already used")
+        if prepared["workspace_id"] != workspace_id:
+            raise AccessDenied("action_id does not belong to this workspace")
+        approval_action = {
+            "tool_name": "commit_action",
+            "workspace_id": workspace_id,
+            "action_id": action_id,
+            "prepared_fingerprint": prepared["fingerprint"],
+        }
+        if not self.trust_host_confirmation_for_previewed_patches:
+            self._require_connected_action_approval(
+                "commit_action",
+                approval_action,
+                approval_id,
+            )
+        del self.pending_prepared_actions[action_id]
+        if prepared["action_type"] in {"write", "edit"}:
+            result = self._commit_prepared_file(prepared)
+        elif prepared["action_type"] == "bash":
+            result = self._commit_prepared_bash(prepared)
+        else:
+            raise AccessDenied("prepared action type is no longer supported")
+        return {
+            "status": "committed",
+            "action_id": action_id,
+            "action_type": prepared["action_type"],
+            "confirmation": self.prepared_action_confirmation,
+            "single_use": True,
+            "committed": True,
+            "result": result,
+        }
+
+    def _prepare_file_write(
+        self,
+        workspace_id: str,
+        path_value: Optional[str],
+        content: Optional[str],
+    ) -> Dict[str, Any]:
+        if not isinstance(path_value, str) or not path_value.strip():
+            raise ValueError("write preparation requires path")
+        if not isinstance(content, str):
+            raise ValueError("write preparation requires string content")
+        if len(content.encode("utf-8")) > MAX_READ_FILE_BYTES:
+            raise AccessDenied("prepared write content is too large")
+        target = self.resolve_workspace_path(workspace_id, path_value, must_exist=False)
+        self._assert_not_protected(target)
+        relative = self.relative_path(workspace_id, target)
+        original = ""
+        base_sha256: Optional[str] = None
+        target_state = "absent"
+        if target.exists():
+            if not target.is_file():
+                raise AccessDenied("prepared write target must be a file or absent")
+            if target.stat().st_size > MAX_READ_FILE_BYTES:
+                raise AccessDenied("prepared write target is too large")
+            try:
+                original = target.read_text(encoding="utf-8")
+            except UnicodeDecodeError as exc:
+                raise AccessDenied("prepared write target must be a UTF-8 text file") from exc
+            base_sha256 = _sha256_text(original)
+            target_state = "existing"
+        if original == content and target_state == "existing":
+            raise ValueError("prepared write contains no changes")
+        diff = "".join(
+            difflib.unified_diff(
+                original.splitlines(keepends=True),
+                content.splitlines(keepends=True),
+                fromfile=f"a/{relative}" if target_state == "existing" else "/dev/null",
+                tofile=f"b/{relative}",
+            )
+        )
+        result_sha256 = _sha256_text(content)
+        action = {
+            "tool_name": "write",
+            "workspace_id": workspace_id,
+            "path": relative,
+            "target_state": target_state,
+            "base_sha256": base_sha256,
+            "content_sha256": result_sha256,
+            "content_bytes": len(content.encode("utf-8")),
+            "diff_sha256": _sha256_text(diff),
+        }
+        return {
+            "workspace_id": workspace_id,
+            "action_type": "write",
+            "action": action,
+            "path": relative,
+            "target_state": target_state,
+            "base_sha256": base_sha256,
+            "result_sha256": result_sha256,
+            "new_content": content,
+            "diff": diff,
+        }
+
+    def _prepare_file_edit(
+        self,
+        workspace_id: str,
+        path_value: Optional[str],
+        find: Optional[str],
+        replace: Optional[str],
+        expected_replacements: Optional[int],
+    ) -> Dict[str, Any]:
+        if not isinstance(path_value, str) or not path_value.strip():
+            raise ValueError("edit preparation requires path")
+        if not isinstance(find, str) or not find:
+            raise ValueError("edit preparation requires non-empty find text")
+        if not isinstance(replace, str):
+            raise ValueError("edit preparation requires string replace text")
+        target = self.resolve_workspace_path(workspace_id, path_value, must_exist=True)
+        if not target.is_file():
+            raise AccessDenied("prepared edit target must be a file")
+        self._assert_not_protected(target)
+        if target.stat().st_size > MAX_READ_FILE_BYTES:
+            raise AccessDenied("prepared edit target is too large")
+        try:
+            original = target.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise AccessDenied("prepared edit target must be a UTF-8 text file") from exc
+        count = original.count(find)
+        if count == 0:
+            raise ValueError("find text was not present")
+        if expected_replacements is not None and count != expected_replacements:
+            raise ValueError(
+                f"expected {expected_replacements} replacement(s), found {count}"
+            )
+        new_content = original.replace(find, replace)
+        if len(new_content.encode("utf-8")) > MAX_READ_FILE_BYTES:
+            raise AccessDenied("prepared edit result is too large")
+        relative = self.relative_path(workspace_id, target)
+        diff = "".join(
+            difflib.unified_diff(
+                original.splitlines(keepends=True),
+                new_content.splitlines(keepends=True),
+                fromfile=f"a/{relative}",
+                tofile=f"b/{relative}",
+            )
+        )
+        base_sha256 = _sha256_text(original)
+        result_sha256 = _sha256_text(new_content)
+        action = {
+            "tool_name": "edit",
+            "workspace_id": workspace_id,
+            "path": relative,
+            "base_sha256": base_sha256,
+            "result_sha256": result_sha256,
+            "find_sha256": _sha256_text(find),
+            "replace_sha256": _sha256_text(replace),
+            "expected_replacements": expected_replacements,
+            "actual_replacements": count,
+            "diff_sha256": _sha256_text(diff),
+        }
+        return {
+            "workspace_id": workspace_id,
+            "action_type": "edit",
+            "action": action,
+            "path": relative,
+            "target_state": "existing",
+            "base_sha256": base_sha256,
+            "result_sha256": result_sha256,
+            "new_content": new_content,
+            "replacements": count,
+            "diff": diff,
+        }
+
+    def _prepare_bash_action(
+        self,
+        workspace_id: str,
+        command: Optional[str],
+        cwd: str,
+        timeout_seconds: int,
+    ) -> Dict[str, Any]:
+        if not isinstance(command, str) or not command.strip():
+            raise ValueError("bash preparation requires a non-empty command")
+        timeout = max(1, min(int(timeout_seconds), MAX_COMMAND_SECONDS))
+        cwd = _normalize_optional_workspace_location(cwd, "cwd")
+        cwd_path = self.resolve_workspace_path(workspace_id, cwd, must_exist=True)
+        if not cwd_path.is_dir():
+            raise AccessDenied("prepared bash cwd must be a directory")
+        self._assert_not_protected(cwd_path)
+        forced_reason = self._assert_connected_bash_allowed(command)
+        if forced_reason:
+            raise AccessDenied(
+                "prepare_action accepts only ordinary project-local bash; "
+                f"separately high-risk command detected: {forced_reason}"
+            )
+        relative_cwd = self.relative_path(workspace_id, cwd_path)
+        action = {
+            "tool_name": "bash",
+            "workspace_id": workspace_id,
+            "cwd": relative_cwd,
+            "command": command,
+            "timeout_seconds": timeout,
+        }
+        return {
+            "workspace_id": workspace_id,
+            "action_type": "bash",
+            "action": action,
+            "command": command,
+            "cwd": relative_cwd,
+            "timeout_seconds": timeout,
+        }
+
+    def _commit_prepared_file(self, prepared: Dict[str, Any]) -> Dict[str, Any]:
+        workspace_id = prepared["workspace_id"]
+        target = self.resolve_workspace_path(
+            workspace_id,
+            prepared["path"],
+            must_exist=False,
+        )
+        self._assert_not_protected(target)
+        if prepared["target_state"] == "absent":
+            if target.exists():
+                raise AccessDenied(
+                    "prepared create target now exists; prepare a new action before committing"
+                )
+        else:
+            if not target.is_file():
+                raise AccessDenied(
+                    "prepared file target changed type or disappeared; prepare again"
+                )
+            if target.stat().st_size > MAX_READ_FILE_BYTES:
+                raise AccessDenied("prepared file target is now too large")
+            try:
+                current = target.read_text(encoding="utf-8")
+            except UnicodeDecodeError as exc:
+                raise AccessDenied("prepared file target is no longer UTF-8 text") from exc
+            if _sha256_text(current) != prepared["base_sha256"]:
+                raise AccessDenied(
+                    "file changed after action preparation; prepare a new action"
+                )
+        new_content = prepared["new_content"]
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(new_content, encoding="utf-8")
+        return {
+            "path": prepared["path"],
+            "bytes": len(new_content.encode("utf-8")),
+            "sha256": prepared["result_sha256"],
+            "replacements": prepared.get("replacements"),
+        }
+
+    def _commit_prepared_bash(self, prepared: Dict[str, Any]) -> Dict[str, Any]:
+        workspace_id = prepared["workspace_id"]
+        cwd_path = self.resolve_workspace_path(
+            workspace_id,
+            prepared["cwd"],
+            must_exist=True,
+        )
+        if not cwd_path.is_dir():
+            raise AccessDenied("prepared bash cwd is no longer a directory")
+        self._assert_not_protected(cwd_path)
+        forced_reason = self._assert_connected_bash_allowed(prepared["command"])
+        if forced_reason:
+            raise AccessDenied(
+                "prepared bash became separately high risk and cannot be committed: "
+                + forced_reason
+            )
+        completed = subprocess.run(
+            prepared["command"],
+            cwd=cwd_path,
+            shell=True,
+            text=True,
+            capture_output=True,
+            timeout=prepared["timeout_seconds"],
+        )
+        stdout = completed.stdout.encode("utf-8", errors="replace")[:MAX_COMMAND_OUTPUT_BYTES]
+        stderr = completed.stderr.encode("utf-8", errors="replace")[:MAX_COMMAND_OUTPUT_BYTES]
+        return {
+            "cwd": str(cwd_path),
+            "command": prepared["command"],
+            "returncode": completed.returncode,
+            "stdout": stdout.decode("utf-8", errors="replace"),
+            "stderr": stderr.decode("utf-8", errors="replace"),
         }
 
     def write_file(
@@ -552,6 +948,7 @@ class FullAgentWorkspaceManager:
 
     def grep(self, workspace_id: str, pattern: str, path_value: str = ".") -> List[Dict[str, Any]]:
         self.touch()
+        path_value = _normalize_optional_workspace_location(path_value, "path")
         root = self.resolve_workspace_path(workspace_id, path_value, must_exist=True)
         if not isinstance(pattern, str) or not pattern:
             raise ValueError("pattern must be a non-empty string")
@@ -592,6 +989,7 @@ class FullAgentWorkspaceManager:
         if not isinstance(command, str) or not command.strip():
             raise ValueError("command must be a non-empty string")
         timeout = max(1, min(int(timeout_seconds), MAX_COMMAND_SECONDS))
+        cwd = _normalize_optional_workspace_location(cwd, "cwd")
         cwd_path = self.resolve_workspace_path(workspace_id, cwd, must_exist=True)
         if not cwd_path.is_dir():
             raise AccessDenied("bash cwd must be a directory")
@@ -694,14 +1092,15 @@ class FullAgentWorkspaceManager:
         }
 
     def set_permission_mode(self, mode: str, confirmation: str = "") -> Dict[str, Any]:
-        """Select approval or controlled-auto mode for this Connected Agent session."""
+        """Enter Controlled Auto; approval remains an internal compatibility fallback."""
         self._require_connected_agent_tool("set_permission_mode")
         self.touch()
         normalized = mode.strip().lower()
         if normalized not in {PERMISSION_APPROVAL, PERMISSION_CONTROLLED_AUTO}:
             raise AccessDenied(
-                "set_permission_mode accepts approval or controlled_auto only; "
-                "Danger Auto requires its separate exact-phrase tool"
+                "set_permission_mode exposes only controlled_auto; Danger Auto uses "
+                "its separate exact-phrase tool, while approval is reserved for "
+                "internal direct-client compatibility"
             )
         if normalized == PERMISSION_CONTROLLED_AUTO and not _looks_like_affirmative_confirmation(
             confirmation
@@ -723,18 +1122,40 @@ class FullAgentWorkspaceManager:
         return {
             "profile": self.profile,
             "permission_mode": self.permission_mode,
+            "base_permission_mode": self.base_permission_mode,
+            "visible_permission_modes": [
+                PERMISSION_CONTROLLED_AUTO,
+                PERMISSION_DANGER_AUTO,
+            ],
+            "server_approval_fallback_active": self.permission_mode
+            == PERMISSION_APPROVAL,
             "risk_level": self.risk_level,
+            "previewed_patch_confirmation": self.previewed_patch_confirmation,
+            "prepared_action_confirmation": self.prepared_action_confirmation,
+            "host_confirmed_tools": (
+                ["apply_patch", "commit_action"]
+                if self.trust_host_confirmation_for_previewed_patches
+                else []
+            ),
             "automatic_tools": (
                 sorted(CONTROLLED_AUTO_TOOLS)
                 if self.permission_mode == PERMISSION_CONTROLLED_AUTO
                 else (
-                    ["write", "edit", "apply_patch", "bash", "run_task"]
+                    [
+                        "write",
+                        "edit",
+                        "apply_patch",
+                        "commit_action",
+                        "bash",
+                        "run_task",
+                    ]
                     if self.permission_mode == PERMISSION_DANGER_AUTO
                     else []
                 )
             ),
             "raw_write_edit_bash_require_approval": self.permission_mode
             != PERMISSION_DANGER_AUTO,
+            "prepared_action_flow": "prepare_action -> commit_action",
             "hard_blocks_remain": [
                 "protected credential paths",
                 "network commands",
@@ -771,6 +1192,7 @@ class FullAgentWorkspaceManager:
             "temporary_allowed_roots": [str(root) for root in self.session_allowed_roots],
             "pending_action_approvals": len(self.pending_action_approvals),
             "granted_action_approvals": len(self.granted_action_approvals),
+            "pending_prepared_actions": len(self.pending_prepared_actions),
         })
         return status
 
@@ -778,7 +1200,7 @@ class FullAgentWorkspaceManager:
         self._require_connected_agent_tool("disable_danger_auto")
         self.touch()
         if self.permission_mode == PERMISSION_DANGER_AUTO:
-            self.permission_mode = PERMISSION_APPROVAL
+            self.permission_mode = self.base_permission_mode
         return self.danger_auto_status()
 
     def grant_action_approval(self, approval_id: str, confirmation: str) -> Dict[str, Any]:
@@ -1119,12 +1541,14 @@ class FullAgentWorkspaceManager:
         if time.time() - self.session_last_activity <= DANGER_AUTO_IDLE_SECONDS:
             self._expire_action_approvals()
             self._expire_patch_previews()
+            self._expire_prepared_actions()
             return
-        self.permission_mode = PERMISSION_APPROVAL
+        self.permission_mode = self.base_permission_mode
         self.session_allowed_roots.clear()
         self.pending_action_approvals.clear()
         self.granted_action_approvals.clear()
         self.pending_patch_previews.clear()
+        self.pending_prepared_actions.clear()
 
     def _expire_action_approvals(self) -> None:
         cutoff = time.time() - ACTION_APPROVAL_IDLE_SECONDS
@@ -1145,6 +1569,14 @@ class FullAgentWorkspaceManager:
             preview_id: preview
             for preview_id, preview in self.pending_patch_previews.items()
             if float(preview.get("created_at", 0)) >= cutoff
+        }
+
+    def _expire_prepared_actions(self) -> None:
+        cutoff = time.time() - PREPARED_ACTION_IDLE_SECONDS
+        self.pending_prepared_actions = {
+            action_id: prepared
+            for action_id, prepared in self.pending_prepared_actions.items()
+            if float(prepared.get("created_at", 0)) >= cutoff
         }
 
     def _resolve_grantable_root(self, path_value: str) -> Path:
@@ -1221,6 +1653,7 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
             "properties": {},
             "additionalProperties": False,
         },
+        "annotations": _read_only_annotations(idempotent=False),
     }
     base_tools = [
         {
@@ -1237,6 +1670,7 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
                 "required": ["path"],
                 "additionalProperties": False,
             },
+            "annotations": _read_only_annotations(idempotent=False),
         },
         _path_tool("ls", "List Directory", "List files and directories in an opened workspace."),
         _path_tool("read", "Read File", "Read a UTF-8 file in an opened workspace."),
@@ -1259,6 +1693,7 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
                 "required": ["workspace_id", "path", "start_line"],
                 "additionalProperties": False,
             },
+            "annotations": _read_only_annotations(),
         },
     ]
     if profile == PROFILE_CONNECTED_AGENT:
@@ -1273,11 +1708,12 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
                 "properties": {
                     "workspace_id": {"type": "string"},
                     "pattern": {"type": "string"},
-                    "path": {"type": "string"},
+                    "path": {"type": "string", "default": "."},
                 },
                 "required": ["workspace_id", "pattern"],
                 "additionalProperties": False,
             },
+            "annotations": _read_only_annotations(),
         },
         {
             "name": "glob",
@@ -1292,6 +1728,7 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
                 "required": ["workspace_id", "pattern"],
                 "additionalProperties": False,
             },
+            "annotations": _read_only_annotations(),
         },
     ]
     if profile == PROFILE_READ_ONLY_PROJECT:
@@ -1300,7 +1737,11 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
         {
             "name": "write",
             "title": "Write File",
-            "description": "Write a UTF-8 file in an opened workspace.",
+            "description": (
+                "Directly write a UTF-8 file. In Controlled Auto, prefer the read-only "
+                "prepare_action then bound commit_action flow; this raw compatibility "
+                "tool retains legacy server approval."
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1312,11 +1753,16 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
                 "required": ["workspace_id", "path", "content"],
                 "additionalProperties": False,
             },
+            "annotations": _write_annotations(destructive=True),
         },
         {
             "name": "edit",
             "title": "Edit File",
-            "description": "Replace exact text in a UTF-8 file in an opened workspace.",
+            "description": (
+                "Directly replace exact text. In Controlled Auto, prefer the read-only "
+                "prepare_action then bound commit_action flow; this raw compatibility "
+                "tool retains legacy server approval."
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1330,9 +1776,60 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
                 "required": ["workspace_id", "path", "find", "replace"],
                 "additionalProperties": False,
             },
+            "annotations": _write_annotations(destructive=True),
         },
     ]
     structured_execution_tools = [
+        {
+            "name": "prepare_action",
+            "title": "Prepare Bound Action",
+            "description": (
+                "Validate and store one immutable write, edit, or ordinary project-local "
+                "bash action without executing it. Show the returned action and diff, "
+                "then call commit_action once with only its action_id."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string"},
+                    "action_type": {
+                        "type": "string",
+                        "enum": ["write", "edit", "bash"],
+                    },
+                    "path": {"type": "string"},
+                    "content": {"type": "string"},
+                    "find": {"type": "string"},
+                    "replace": {"type": "string"},
+                    "expected_replacements": {"type": "integer"},
+                    "command": {"type": "string"},
+                    "cwd": {"type": "string", "default": "."},
+                    "timeout_seconds": {"type": "integer"},
+                },
+                "required": ["workspace_id", "action_type"],
+                "additionalProperties": False,
+            },
+            "annotations": _read_only_annotations(idempotent=False),
+        },
+        {
+            "name": "commit_action",
+            "title": "Commit Prepared Action",
+            "description": (
+                "Commit exactly one unexpired prepare_action result using only its "
+                "bound action_id. The bounded product session uses one host-native "
+                "confirmation; direct clients retain server one-action approval."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string"},
+                    "action_id": {"type": "string"},
+                    "approval_id": {"type": "string"},
+                },
+                "required": ["workspace_id", "action_id"],
+                "additionalProperties": False,
+            },
+            "annotations": _write_annotations(destructive=True),
+        },
         {
             "name": "file_info",
             "title": "File Info",
@@ -1349,6 +1846,7 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
                 "required": ["workspace_id", "path"],
                 "additionalProperties": False,
             },
+            "annotations": _read_only_annotations(),
         },
         {
             "name": "preview_patch",
@@ -1373,13 +1871,20 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
                 ],
                 "additionalProperties": False,
             },
+            "annotations": {
+                "readOnlyHint": True,
+                "destructiveHint": False,
+                "idempotentHint": False,
+                "openWorldHint": False,
+            },
         },
         {
             "name": "apply_patch",
             "title": "Apply Previewed Patch",
             "description": (
-                "Apply exactly one unexpired preview_patch result. Approval mode "
-                "requires a one-action approval; Controlled Auto may apply it automatically."
+                "Apply exactly one unexpired preview_patch result after showing its diff. "
+                "The session reports whether commit confirmation is handled by a server "
+                "one-action approval or one ChatGPT host-native write confirmation."
             ),
             "inputSchema": {
                 "type": "object",
@@ -1391,13 +1896,19 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
                 "required": ["workspace_id", "preview_id"],
                 "additionalProperties": False,
             },
+            "annotations": {
+                "readOnlyHint": False,
+                "destructiveHint": True,
+                "idempotentHint": False,
+                "openWorldHint": False,
+            },
         },
         {
             "name": "list_tasks",
             "title": "List Allowed Tasks",
             "description": (
-                "List test, lint, build, or other commands explicitly configured "
-                "by the local session owner."
+                "List bounded local test, lint, build, or other check commands "
+                "explicitly configured by the session owner."
             ),
             "inputSchema": {
                 "type": "object",
@@ -1405,13 +1916,17 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
                 "required": ["workspace_id"],
                 "additionalProperties": False,
             },
+            "annotations": _read_only_annotations(),
         },
         {
             "name": "run_task",
             "title": "Run Allowed Task",
             "description": (
-                "Run one exact owner-configured task without arbitrary arguments. "
-                "Approval mode requires one-action approval; Controlled Auto may run it automatically."
+                "Run one exact owner-configured, non-destructive local check without "
+                "arbitrary arguments. Network, install, privileged, Git remote, and "
+                "destructive commands remain blocked. The default Controlled Auto "
+                "product session may run it with host confirmation; low-level direct "
+                "clients retain the hidden server approval fallback."
             ),
             "inputSchema": {
                 "type": "object",
@@ -1423,49 +1938,61 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
                 "required": ["workspace_id", "task_name"],
                 "additionalProperties": False,
             },
+            "annotations": {
+                "readOnlyHint": False,
+                "destructiveHint": False,
+                "idempotentHint": False,
+                "openWorldHint": False,
+            },
         },
     ]
     bash_tool = {
         "name": "bash",
         "title": "Run Bash",
         "description": (
-            "Run a shell command in an opened workspace. This is not a sandbox; "
-            "commands run with the local user account."
+            "Directly run a shell command in an opened workspace. This is not a "
+            "sandbox. In Controlled Auto, prefer prepare_action then commit_action "
+            "for ordinary project-local commands; raw bash retains legacy approval."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "workspace_id": {"type": "string"},
                 "command": {"type": "string"},
-                "cwd": {"type": "string"},
+                "cwd": {"type": "string", "default": "."},
                 "timeout_seconds": {"type": "integer"},
                 "approval_id": {"type": "string"},
             },
             "required": ["workspace_id", "command"],
             "additionalProperties": False,
         },
+        "annotations": _write_annotations(destructive=True),
     }
     connected_tools = [
         {
             "name": "set_permission_mode",
             "title": "Set Permission Mode",
             "description": (
-                "Select approval or controlled_auto for this session. Controlled Auto "
-                "requires clear user confirmation and only auto-runs previewed patches "
-                "and owner-configured tasks."
+                "Enter bounded Controlled Auto from a low-level server approval "
+                "fallback. Product sessions already start in Controlled Auto; "
+                "Danger Auto uses its separate exact-phrase tool."
             ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "mode": {
                         "type": "string",
-                        "enum": [PERMISSION_APPROVAL, PERMISSION_CONTROLLED_AUTO],
+                        "enum": [PERMISSION_CONTROLLED_AUTO],
                     },
                     "confirmation": {"type": "string"},
                 },
                 "required": ["mode"],
                 "additionalProperties": False,
             },
+            "annotations": _write_annotations(
+                destructive=False,
+                idempotent=True,
+            ),
         },
         {
             "name": "permission_mode_status",
@@ -1476,6 +2003,7 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
                 "properties": {},
                 "additionalProperties": False,
             },
+            "annotations": _read_only_annotations(),
         },
         {
             "name": "enable_danger_auto",
@@ -1490,6 +2018,10 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
                 "required": ["phrase"],
                 "additionalProperties": False,
             },
+            "annotations": _write_annotations(
+                destructive=True,
+                idempotent=True,
+            ),
         },
         {
             "name": "danger_auto_status",
@@ -1500,6 +2032,7 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
                 "properties": {},
                 "additionalProperties": False,
             },
+            "annotations": _read_only_annotations(),
         },
         {
             "name": "disable_danger_auto",
@@ -1510,6 +2043,10 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
                 "properties": {},
                 "additionalProperties": False,
             },
+            "annotations": _write_annotations(
+                destructive=False,
+                idempotent=True,
+            ),
         },
         {
             "name": "grant_action_approval",
@@ -1528,6 +2065,7 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
                 "required": ["approval_id", "confirmation"],
                 "additionalProperties": False,
             },
+            "annotations": _write_annotations(destructive=True),
         },
         {
             "name": "request_workspace_access",
@@ -1546,6 +2084,7 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
                 "required": ["path", "reason"],
                 "additionalProperties": False,
             },
+            "annotations": _read_only_annotations(idempotent=False),
         },
         {
             "name": "grant_workspace_access",
@@ -1565,6 +2104,7 @@ def tool_definitions(profile: str = PROFILE_FULL_AGENT) -> List[Dict[str, Any]]:
                 "required": ["path"],
                 "additionalProperties": False,
             },
+            "annotations": _write_annotations(destructive=True),
         },
     ]
     if profile == PROFILE_CONNECTED_AGENT:
@@ -1634,6 +2174,33 @@ def _call_tool(params: Dict[str, Any], manager: FullAgentWorkspaceManager) -> Di
                 _required_string(arguments, "path"),
                 _required_int(arguments, "start_line"),
                 _optional_int(arguments, "end_line"),
+            )
+            return _tool_result(json.dumps(result, indent=2), result)
+        if name == "prepare_action":
+            result = manager.prepare_action(
+                _required_string(arguments, "workspace_id"),
+                _required_string(arguments, "action_type"),
+                path_value=arguments.get("path"),
+                content=arguments.get("content"),
+                find=arguments.get("find"),
+                replace=arguments.get("replace"),
+                expected_replacements=_optional_int(
+                    arguments,
+                    "expected_replacements",
+                ),
+                command=arguments.get("command"),
+                cwd=arguments.get("cwd", "."),
+                timeout_seconds=arguments.get(
+                    "timeout_seconds",
+                    MAX_COMMAND_SECONDS,
+                ),
+            )
+            return _tool_result(json.dumps(result, indent=2), result)
+        if name == "commit_action":
+            result = manager.commit_action(
+                _required_string(arguments, "workspace_id"),
+                _required_string(arguments, "action_id"),
+                arguments.get("approval_id"),
             )
             return _tool_result(json.dumps(result, indent=2), result)
         if name == "file_info":
@@ -1807,15 +2374,28 @@ def _initialize_result(
                 "targeted grep plus read_lines for larger source files, and skip "
                 "node_modules, build outputs, sourcemaps, image galleries, and "
                 "dependency artifacts unless the task explicitly requires them. "
-                "Connected Agent has three internal permission modes, not three product tiers: "
-                "approval, controlled_auto, and danger_auto. It starts in approval mode. "
-                "In approval mode, write, edit, apply_patch, bash, and run_task return "
-                "a one-action approval_id; ask the "
-                "user to approve that exact action in chat, call "
-                "grant_action_approval, then retry the original tool call once "
-                "with approval_id. Controlled Auto may automatically apply only a "
-                "previously previewed patch and run only an owner-configured task; raw "
-                "write, edit, and bash still require approval. Do not suggest the "
+                "Connected Agent exposes two user-facing permission choices: "
+                "controlled_auto and danger_auto. The bounded product helper starts in "
+                "controlled_auto; low-level direct clients may retain an internal "
+                "server approval fallback that is not a user-facing mode. "
+                + (
+                    "This session uses one host-native confirmation for bounded commits. "
+                    "For existing-file whole replacements, show preview_patch then call "
+                    "apply_patch once with preview_id. For write, edit, or ordinary "
+                    "project-local bash, call prepare_action, show its action/diff, then "
+                    "call commit_action once with only action_id. Do not request or grant "
+                    "a second approval_id for either bounded path. "
+                    if manager.trust_host_confirmation_for_previewed_patches
+                    else "In the server approval fallback, apply_patch returns a "
+                    "one-action approval_id; "
+                    "ask the user to approve that exact patch in chat, call "
+                    "grant_action_approval, then retry it once with approval_id. "
+                )
+                + "Raw write, edit, and bash are legacy compatibility tools and retain "
+                "the old one-action approval retry. Do not use that fragile path for "
+                "ordinary Controlled Auto work; use prepare_action -> commit_action. "
+                "In the low-level server approval fallback, bounded commits and run_task "
+                "still require server approval. Do not suggest the "
                 f"`{DANGER_AUTO_PHRASE}` phrase for ordinary one-off writes, "
                 "edits, or bash commands. That phrase is only a hidden high-risk "
                 "automation switch typed by the user. Server policy still blocks "
@@ -1833,12 +2413,23 @@ def _initialize_result(
         "profile": manager.profile,
         "contract_version": TOOL_CONTRACT_VERSION,
         "permission_mode": manager.permission_mode,
+        "visible_permission_modes": [
+            PERMISSION_CONTROLLED_AUTO,
+            PERMISSION_DANGER_AUTO,
+        ],
+        "server_approval_fallback_active": manager.permission_mode
+        == PERMISSION_APPROVAL,
+        "previewed_patch_confirmation": manager.previewed_patch_confirmation,
+        "prepared_action_confirmation": manager.prepared_action_confirmation,
         "tools": manager.tool_names,
         "risk_level": manager.risk_level,
     }
 
 
 def _path_tool(name: str, title: str, description: str) -> Dict[str, Any]:
+    path_schema: Dict[str, Any] = {"type": "string"}
+    if name == "ls":
+        path_schema["default"] = "."
     return {
         "name": name,
         "title": title,
@@ -1847,11 +2438,43 @@ def _path_tool(name: str, title: str, description: str) -> Dict[str, Any]:
             "type": "object",
             "properties": {
                 "workspace_id": {"type": "string"},
-                "path": {"type": "string"},
+                "path": path_schema,
             },
             "required": ["workspace_id", "path"] if name == "read" else ["workspace_id"],
             "additionalProperties": False,
         },
+        "annotations": _read_only_annotations(),
+    }
+
+
+def _normalize_optional_workspace_location(value: Any, field_name: str) -> str:
+    """Map an omitted or blank optional root path/CWD to the workspace root."""
+    if value is None:
+        return "."
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string")
+    return value if value.strip() else "."
+
+
+def _read_only_annotations(*, idempotent: bool = True) -> Dict[str, bool]:
+    """Describe tools that do not change the authorized project or outside world."""
+    return {
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": idempotent,
+        "openWorldHint": False,
+    }
+
+
+def _write_annotations(
+    *, destructive: bool, idempotent: bool = False
+) -> Dict[str, bool]:
+    """Describe tools that mutate project data or session authorization state."""
+    return {
+        "readOnlyHint": False,
+        "destructiveHint": destructive,
+        "idempotentHint": idempotent,
+        "openWorldHint": False,
     }
 
 
@@ -2021,6 +2644,24 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         choices=sorted(VALID_PROFILES),
         default=PROFILE_FULL_AGENT,
     )
+    parser.add_argument(
+        "--initial-permission-mode",
+        choices=[PERMISSION_APPROVAL, PERMISSION_CONTROLLED_AUTO],
+        default=PERMISSION_APPROVAL,
+        help=(
+            "Initial Connected Agent permission mode. Direct clients default to the "
+            "hidden approval fallback; product helpers explicitly choose controlled_auto."
+        ),
+    )
+    parser.add_argument(
+        "--trust-host-confirmation-for-previewed-patches",
+        action="store_true",
+        help=(
+            "Treat the MCP host's native write confirmation as the sole user-facing "
+            "approval for single-use apply_patch and commit_action calls. Direct "
+            "clients default to the server approval_id flow."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -2031,6 +2672,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             args.allowed_root,
             profile=args.profile,
             allowed_tasks=parse_allowed_tasks(args.allowed_task),
+            trust_host_confirmation_for_previewed_patches=(
+                args.trust_host_confirmation_for_previewed_patches
+            ),
+            initial_permission_mode=args.initial_permission_mode,
         ),
         sys.stdin,
     )

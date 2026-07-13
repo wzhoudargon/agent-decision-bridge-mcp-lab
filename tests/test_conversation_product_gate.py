@@ -46,7 +46,7 @@ class ConversationProductGateTests(unittest.TestCase):
 
         self.assertEqual(result["exit_code"], 0)
         self.assertIn("Current state: ready_to_open_connected_agent", result["message"])
-        self.assertIn("Risk if opened: 3/5-5/5", result["message"])
+        self.assertIn("Risk if opened: 4/5-5/5", result["message"])
         self.assertIn("Open the Connected Agent connector window", result["message"])
 
     def test_full_agent_reports_browser_restart_recovery(self):

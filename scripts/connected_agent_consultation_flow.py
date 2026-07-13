@@ -278,7 +278,7 @@ def close() -> int:
 def capture_and_keep_open(args: argparse.Namespace) -> int:
     print("Current state: connected_agent_flow_capturing_advice")
     print("Requested mode: connected-agent")
-    print("Risk while session may still be open: 3/5-5/5")
+    print("Risk while session may still be open: 4/5-5/5")
     input_text = None
     if not args.advice_file:
         input_text = sys.stdin.read()
@@ -311,7 +311,7 @@ def capture_and_keep_open(args: argparse.Namespace) -> int:
     if should_close:
         print("Risk after close: 2/5 if persistent OAuth state remains, otherwise 1/5")
     else:
-        print("Risk after capture: 3/5-5/5 until idle shutdown closes the session.")
+        print("Risk after capture: 4/5-5/5 until idle shutdown closes the session.")
         print(f"Idle shutdown: {DEFAULT_IDLE_TIMEOUT_SECONDS} seconds after last Connected Agent use.")
     print("Next step: classify captured advice as Adopt / Adapt / Reject / Need info.")
     return 0
@@ -391,7 +391,7 @@ def print_status_card(
     print(f"Connected Agent: {state}")
     print(f"Advisor channel: {args.advisor_channel} / {args.advisor_health}")
     print(f"Workspace: {Path(args.allowed_root).expanduser()}")
-    print("Risk while online: 3/5-5/5; Danger Auto 5/5")
+    print("Risk while online: 4/5-5/5; Danger Auto 5/5")
     print(f"Speed profile: {args.speed}")
     print(f"Current step: {current_step}")
     print(f"Next action: {next_action}")
