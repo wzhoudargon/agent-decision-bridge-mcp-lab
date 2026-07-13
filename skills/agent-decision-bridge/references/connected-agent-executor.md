@@ -17,8 +17,9 @@ Connected Agent is a temporary project worker with boundaries:
 
 1. Verify an actual advisor channel.
 2. Open the short-lived Connected Agent session for the authorized root.
-3. In Colleagues/embedded ChatGPT, type `@` and select the exact user-created
-   connector display name. For the default project setup, select
+3. In the Codex built-in ChatGPT dialog, or another ChatGPT surface that
+   actually exposes Connector/App tools, type `@` and select the exact
+   user-created connector display name. For the default project setup, select
    `Agent Decision Bridge Connected Agent`.
 4. Confirm the connector chip and contract `2.0` tools are visible.
 5. Open with `open_default_workspace()` or the compatibility fallback

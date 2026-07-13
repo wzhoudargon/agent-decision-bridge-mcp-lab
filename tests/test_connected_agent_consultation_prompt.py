@@ -20,6 +20,7 @@ class ConnectedAgentConsultationPromptTests(unittest.TestCase):
         )
 
         self.assertIn("Agent Decision Bridge Connected Agent", text)
+        self.assertIn("Codex built-in ChatGPT dialog", text)
         self.assertIn("type @ and select the user-created connector", text)
         self.assertIn("exact display name", text)
         self.assertIn("Writing the connector name as plain text does not attach its tools", text)
@@ -72,7 +73,7 @@ class ConnectedAgentConsultationPromptTests(unittest.TestCase):
         self.assertIn("README.md", text)
         self.assertIn("docs/security-public.md", text)
 
-    def test_custom_connector_display_name_is_used_for_colleagues_attachment(self):
+    def test_custom_connector_display_name_is_used_for_codex_chat_attachment(self):
         text = prompt.render_prompt(
             question="Review this project.",
             allowed_root="/tmp/example-project",

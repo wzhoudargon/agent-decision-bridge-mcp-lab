@@ -1,5 +1,19 @@
 # Update Notes
 
+## 2026-07-13: Codex Chat Dialog Terminology Correction
+
+### What Changed
+
+- Removed a mistaken product-surface label introduced by voice transcription.
+- Standardized user-facing instructions on **the Codex built-in ChatGPT
+  dialog**, or another ChatGPT surface that actually exposes Connector/App
+  tools.
+- Kept Connector availability conditional: the connector chip/reference and
+  callable tools must be visible before the workflow continues.
+- Updated the runtime/public Skill wording, user documentation, generated
+  connector prompt, evaluation case, and regression test name.
+- No permission, workspace, or server capability changed in this correction.
+
 ## 2026-07-13: Controlled Project Executor Contract 2.0
 
 ### What Changed
@@ -39,13 +53,14 @@
 - Runtime, public GitHub, legacy upload, and sanitized mirror Skill packages all
   pass `quick_validate.py`.
 
-## 2026-07-12: Colleagues Connector Attachment And Read Compatibility
+## 2026-07-12: Codex Chat Connector Attachment And Read Compatibility
 
 ### What Changed
 
-- Added the newer Colleagues/embedded ChatGPT attachment flow: discover the
-  exact user-created connector display name, type `@`, select it from the UI,
-  and verify that its tools are mounted before sending workspace instructions.
+- Added the Codex built-in ChatGPT dialog and other tool-capable ChatGPT
+  attachment flow: discover the exact user-created connector display name,
+  type `@`, select it from the UI, and verify that its tools are mounted before
+  sending workspace instructions.
 - Documented the default connector display name as
   `Agent Decision Bridge Connected Agent`.
 - Clarified that a plain-text connector name does not attach tools and that

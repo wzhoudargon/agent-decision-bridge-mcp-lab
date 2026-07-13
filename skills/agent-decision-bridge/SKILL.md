@@ -64,8 +64,9 @@ GPT Pro has not been consulted yet; the system is still preparing or waiting.
 
 ## Connected Agent Attachment
 
-On newer Colleagues or embedded ChatGPT surfaces, a connector name written as
-plain text does not attach tools.
+In the Codex built-in ChatGPT dialog, or another ChatGPT surface that actually
+exposes Connector/App tools, a connector name written as plain text does not
+attach tools.
 
 1. Discover the exact user-created connector display name from the visible app
    detail, installed list, or a user-supplied connector reference.
@@ -99,7 +100,8 @@ Before project inspection, compare the attached connector tools with the full
 contract. If anything is missing:
 
 1. Reopen or verify the short-lived local session so it uses current server code.
-2. Start a fresh ChatGPT/Colleagues conversation.
+2. Start a fresh conversation in the Codex built-in ChatGPT dialog or another
+   tool-capable ChatGPT surface.
 3. Attach the exact connector again through `@`.
 4. Recheck the complete contract.
 5. If still incomplete, stop with `connector_contract_incomplete` and ask the

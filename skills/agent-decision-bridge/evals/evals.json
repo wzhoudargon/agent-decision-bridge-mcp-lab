@@ -22,8 +22,8 @@
     },
     {
       "id": 1,
-      "name": "colleagues-connector-attachment",
-      "prompt": "新版 Colleagues 里面怎么加载我创建的连接器？",
+      "name": "codex-chat-connector-attachment",
+      "prompt": "Codex 内置 ChatGPT 对话框里怎么加载我创建的连接器？",
       "expected_output": "要求发现准确显示名，通过 @ 选择并确认工具已挂载；不得手写或猜测 plugin:// 标识。",
       "files": [],
       "assertions": [

@@ -26,10 +26,11 @@ First instead.
    - `direct-tool`: Codex has a callable advisor tool.
 4. Opens a short Connected Agent session only after the advisor channel is ready.
 5. Runs the fast public health check before asking ChatGPT Web to use the connector.
-6. On the newer Colleagues or embedded ChatGPT surface, discovers the exact
-   user-created connector display name, then tells the user to type `@` and
-   select that exact connector in the composer. For the default connector in
-   this project, the name is `Agent Decision Bridge Connected Agent`. The UI
+6. In the Codex built-in ChatGPT dialog, or another ChatGPT surface that
+   actually exposes Connector/App tools, discovers the exact user-created
+   connector display name, then tells the user to type `@` and select that
+   exact connector in the composer. For the default connector in this project,
+   the name is `Agent Decision Bridge Connected Agent`. The UI
    may render the selection as a `plugin://...` reference; users should not
    hand-type or reconstruct account-specific plugin IDs. A plain-text connector
    name does not attach tools. Codex confirms that the connector reference and

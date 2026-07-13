@@ -123,9 +123,10 @@ Connected Agent needs three things:
    Tailscale Funnel, Cloudflare Tunnel, ngrok, Pinggy, or a user-managed HTTPS
    reverse proxy.
 
-On the newer Colleagues or embedded ChatGPT surface, attach a user-created
-connector by typing `@` in the composer and selecting its exact visible display
-name. The default connector created for this project is named
+In the Codex built-in ChatGPT dialog, or another ChatGPT surface that actually
+exposes Connector/App tools, attach a user-created connector by typing `@` in
+the composer and selecting its exact visible display name. The default
+connector created for this project is named
 `Agent Decision Bridge Connected Agent`. Do not merely type the name in prose,
 and do not manually reconstruct the account-specific `plugin://...` reference;
 the ChatGPT UI should create the connector chip/reference. Continue only after

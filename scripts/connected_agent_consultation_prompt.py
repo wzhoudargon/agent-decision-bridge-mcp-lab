@@ -153,7 +153,7 @@ def render_prompt(
     protected_list = "\n".join(f"- {item}" for item in PROTECTED_BOUNDARY)
     required_tools = ", ".join(CURRENT_CONNECTED_AGENT_TOOLS)
     return f"""ChatGPT Web requirement:
-In the newer Colleagues or embedded ChatGPT composer, type @ and select the user-created connector whose exact display name is `{advisor_name}` before sending this prompt. Let the UI create the connector chip or plugin reference; do not hand-type or reconstruct a plugin:// identifier. Writing the connector name as plain text does not attach its tools.
+In the Codex built-in ChatGPT dialog, or another ChatGPT surface that actually exposes Connector/App tools, type @ and select the user-created connector whose exact display name is `{advisor_name}` before sending this prompt. Let the UI create the connector chip or plugin reference; do not hand-type or reconstruct a plugin:// identifier. Writing the connector name as plain text does not attach its tools.
 Use a chat mode where Apps/MCP connector tools are visible. Before starting the task, confirm that the selected `{advisor_name}` connector reference is present and that the complete current tool contract is visible:
 {required_tools}
 This is Connected Agent tool contract {TOOL_CONTRACT_VERSION}. If any listed tool is missing, do not inspect the project and do not continue with a degraded tool set. Stop with `connector_contract_incomplete`; ask the user to start a fresh conversation in a tool-capable ChatGPT mode, attach the exact connector again through @, and update/re-publish or reinstall it if the fresh conversation is still incomplete.
