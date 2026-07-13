@@ -244,7 +244,7 @@ def build_report(args: argparse.Namespace) -> List[str]:
     return [
         "Current state: connector_diagnostic",
         f"Mode: {mode}",
-        f"Product tier: {product_tier(mode)}",
+        f"Product mode: {product_mode(mode)}",
         f"Risk coefficient: {risk}/5",
         f"Risk reason: {risk_reason}",
         f"Local MCP URL: {args.local_url}",
@@ -254,7 +254,7 @@ def build_report(args: argparse.Namespace) -> List[str]:
         f"OAuth Owner password file status: {secret_file_status(owner_token_file)}",
         f"OAuth state file status: {secret_file_status(oauth_state_file)}",
         f"Local probe: {probe}",
-        "Connector split note: V1.1 product uses Ask First plus Connected Agent. Legacy package-only Auto MCP, Read-Only Project Advisor, and Full-Agent are deprecated aliases.",
+        "Connector split note: current product uses Ask First plus Connected Agent. Legacy package-only Auto MCP, Read-Only Project Advisor, and Full-Agent are deprecated aliases.",
         "ChatGPT connector note: changing a temporary public URL usually requires updating or reconnecting the ChatGPT app-side connector.",
         "Preflight command: python3 scripts/decision_inbox_preflight.py --mode "
         f"{mode}"
@@ -273,7 +273,7 @@ def default_owner_token_file(mode: str) -> Path:
     return DEFAULT_OWNER_TOKEN_FILE
 
 
-def product_tier(mode: str) -> str:
+def product_mode(mode: str) -> str:
     if mode == MODE_ASK_FIRST:
         return "Ask First"
     if mode == MODE_CONNECTED_AGENT:

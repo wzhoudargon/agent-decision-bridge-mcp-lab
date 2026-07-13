@@ -33,7 +33,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--session-state",
         default="not_open",
-        help="Observed Full-Agent session state for reporting only.",
+        help="Observed Connected Agent session state for reporting only.",
     )
     return parser.parse_args(argv)
 
@@ -178,7 +178,7 @@ def status(
             f"Next step: {next_step}",
         ]
     )
-    if current_state == "waiting_for_advisor_channel":
+    if current_state in {"waiting_for_advisor_channel", "manual_package_available"}:
         message = "\n".join([message, NOT_CONSULTED_NOTICE])
     return {"message": message, "exit_code": exit_code}
 

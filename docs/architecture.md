@@ -33,17 +33,17 @@ Codex
 ```
 
 This remains useful for compatibility and controlled tests, but it is no longer
-the product Level 2.
+the current project-aware product mode.
 
 ## Product Mode Flow
 
 ```text
-Level 1 Ask First
+Ask First
   Codex -> creates package
   User -> manually sends package to GPT Pro
   User -> brings advice back
 
-Level 2 Connected Agent
+Connected Agent
   ChatGPT Web -> MCP connector
   MCP server -> opens allowed project root
   ChatGPT Web -> lists/reads/searches project files by default
@@ -139,7 +139,7 @@ Role:
 - provides Tailscale Funnel open/status/close lifecycle management through
   `scripts/decision_inbox_tunnel_window.py`.
 - provides Connected Agent task-window lifecycle management through
-  `scripts/full_agent_session.py`.
+  `scripts/connected_agent_session.py`.
 - prepares Manual Package / legacy package-only consultation tasks through
   `scripts/prepare_consultation.py`.
 
@@ -160,7 +160,7 @@ For repeated ChatGPT Web testing, prefer a stable public URL. Temporary tunnel
 URLs are acceptable for one-off tests, but changing the URL usually requires an
 explicit ChatGPT connector reconnect or recreation.
 
-Connected Agent is the V1.1 account-side connector. Legacy package-only Auto
+Connected Agent is the current account-side connector. Legacy package-only Auto
 MCP remains separate. Legacy Read-Only Project Advisor and Full-Agent scopes
 are deprecated aliases for existing connectors and tests:
 
@@ -177,28 +177,43 @@ make the current access boundary unclear.
 
 ## Connected Agent Mode
 
-The product second tier lets ChatGPT Web inspect and, when approved, modify
+Connected Agent lets ChatGPT Web inspect and, when approved, modify
 necessary project context directly without a decision package:
 
 - `--mode connected-agent` is required,
 - at least one `--allowed-root` is required,
 - home and filesystem roots are rejected,
-- tools include `open_workspace`, `ls`, `read`, `write`, `edit`, `grep`,
-  `glob`, `bash`, `enable_danger_auto`, `danger_auto_status`,
-  `disable_danger_auto`, `grant_action_approval`, `request_workspace_access`, and
-  `grant_workspace_access`,
+- tool contract `2.0` is generated from the server schema and includes
+  workspace open/read/search tools; `file_info`, `preview_patch`, and
+  `apply_patch`; owner-configured `list_tasks` and `run_task`; raw
+  `write`/`edit`/`bash`; permission-status controls; Danger Auto controls; and
+  action/workspace approval tools,
+- when exactly one allowed root is configured, `open_default_workspace` avoids
+  passing a local absolute path through ChatGPT Web,
+- stale ChatGPT connector schemas can call `open_workspace` with path exactly
+  `"default"` as the no-local-path compatibility alias for the single allowed
+  root,
 - high-risk credential paths such as `.env*`, `.git`, SSH and cloud credential
   directories, private-key material, and known token/OAuth state files are
   blocked,
+- whole-file reads are capped at normal source-file scale, currently 1 MB, with
+  `read_lines` for larger task-relevant text files,
 - other task-relevant project files may be chosen by the web advisor,
-- writes, edits, and bash use one-action approval by default: return
+- the internal permission mode starts at `approval`; every side effect returns
   `approval_id`, confirm with the user in chat, call `grant_action_approval`,
   then retry the same tool call once,
+- `controlled_auto` may auto-run only a patch that was stored by
+  `preview_patch` against the current file hash, or an exact command configured
+  locally at session start and returned by `list_tasks`; raw write/edit/bash
+  continue to ask,
+- expanding the session to another workspace is always separately
+  approval-gated in every internal mode,
 - The hidden danger switch starts only after the user typed
   `dangerously trust connected agent`,
-- the hidden danger switch can auto-run project-local write/edit and safe local bash, but
-  still blocks network, browser/desktop, clipboard, secret-path, path escape,
-  dependency install, Git remote, and broad destructive command classes,
+- the hidden danger switch can auto-run project-local write/edit and safe local bash,
+  while network, browser/desktop, clipboard, secret-path, and path escape remain
+  hard-blocked and install, Git remote, and broad destructive classes remain
+  separately approval-gated,
 - risk is `3/5-5/5`; the hidden danger switch is fixed `5/5`.
 
 ## Deprecated Full-Agent Mode
@@ -218,7 +233,7 @@ tests:
   `~/.local/share/agent-decision-bridge/`,
 - risk is always `5/5`.
 
-Connected Agent is the product second tier. The part borrowed by default is connector hygiene:
+Connected Agent is the project-aware product mode. The part borrowed by default is connector hygiene:
 self-hosted server, explicit
 public base URL, Host allowlist, local doctor, preflight, and cleanup discipline.
 
@@ -240,13 +255,13 @@ user to manually keep backend commands running.
 
 ```text
 Codex task
-  -> scripts/full_agent_session.py open
+  -> scripts/connected_agent_session.py open
   -> Connected Agent HTTP MCP server
   -> Tailscale Funnel public URL
   -> ChatGPT Connected Agent connector
   -> advisor result
-  -> Codex import/classification: Adopt / Ask / Reject
-  -> scripts/full_agent_session.py touch after active steps
+  -> Codex import/classification: Adopt / Adapt / Reject / Need info
+  -> scripts/connected_agent_session.py touch after active steps
   -> watchdog closes server and Funnel after idle timeout
 ```
 
@@ -275,9 +290,10 @@ It does not automatically give Codex an outbound GPT Pro model call:
 Codex -/-> GPT Pro Web model
 ```
 
-For ChatGPT Web connector calls, the user or automation should select
-GPT-5.5 Thinking. GPT-5.5 Pro should not be used for MCP/App connector work
-because current OpenAI ChatGPT docs say Pro models do not expose those tools.
+For ChatGPT Web connector calls, the user or automation should select a
+ChatGPT Web mode where Apps/MCP connector tools are visible. If connector tools
+are not visible, use Ask First for manual GPT Pro review or switch to a
+tool-capable ChatGPT mode.
 
 Conversation product mode must therefore check the current advisor channel:
 

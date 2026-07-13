@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import sys
 import tempfile
@@ -30,9 +32,64 @@ class PrepareConsultationTests(unittest.TestCase):
         self.assertEqual(metadata["status"], "package_ready")
         self.assertEqual(metadata["product_mode"], "auto-mcp")
         self.assertEqual(metadata["advisor_channel"], "unknown")
-        self.assertIn("waiting for an advisor channel", package)
+        self.assertEqual(metadata["language"], "en")
+        self.assertIn("A prepared package does not mean the advisor has already been consulted.", package)
         self.assertIn("Should we keep Auto MCP package-only?", package)
+        self.assertIn("Adopt / Adapt / Reject / Need info", package)
         self.assertIn("External advice only. This is not authorization.", package)
+
+    def test_cli_defaults_to_ask_first_and_auto_language(self):
+        args = consult.parse_args(["请咨询 GPT Pro"])
+
+        self.assertEqual(args.mode, "ask-first")
+        self.assertEqual(args.language, "auto")
+        self.assertIsNone(args.advisor_channel)
+
+    def test_main_defaults_ask_first_to_manual_channel(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                exit_code = consult.main(
+                    [
+                        "--tasks-root",
+                        str(Path(tempdir) / "tasks"),
+                        "--task-id",
+                        "default-ask-first",
+                        "请咨询 GPT Pro",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Mode: ask-first", output.getvalue())
+        self.assertIn("Advisor channel: manual", output.getvalue())
+        self.assertIn("Language: zh", output.getvalue())
+        self.assertIn("has not been consulted yet", output.getvalue())
+
+    def test_cli_rejects_workspace_modes_that_do_not_create_packages(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                consult.parse_args(["--mode", "connected-agent", "Review this project."])
+
+    def test_creates_chinese_ask_first_package_and_truthful_handoff(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            result = consult.create_consultation_task(
+                tasks_root=Path(tempdir) / "tasks",
+                question="这个 skill 还有哪里可以优化？",
+                mode="ask-first",
+                task_id="skill-review-zh",
+                advisor_channel="manual",
+            )
+            metadata = json.loads(result["metadata_path"].read_text(encoding="utf-8"))
+            package = result["package_path"].read_text(encoding="utf-8")
+            status = consult.render_status(result)
+
+        self.assertEqual(metadata["language"], "zh")
+        self.assertIn("## 给外部模型的说明", package)
+        self.assertIn("## 目标", package)
+        self.assertIn("Adopt / Adapt / Reject / Need info", package)
+        self.assertIn("The target advisor has not been consulted yet", status)
+        self.assertIn("Upload or paste the complete package.md", status)
+        self.assertIn("cannot resolve the local task id", status)
 
     def test_workspace_connector_modes_do_not_create_packages(self):
         with tempfile.TemporaryDirectory() as tempdir:

@@ -1,7 +1,0 @@
-{
-  "interface": {
-    "display_name": "codex外接最强助理",
-    "short_description": "Ask First + Connected Agent 双模式，把 ChatGPT Web 接入 Codex",
-    "default_prompt": "使用 $agent-decision-bridge：可以生成 Ask First 外部评审包，也可以启动简洁的 Connected Agent 咨询流程；外部模型只给建议，Codex 保留本地核查和执行控制。"
-  }
-}

@@ -27,16 +27,33 @@ class ResetDecisionInboxAuthTests(unittest.TestCase):
             self.assertEqual(status, "refused_directory")
             self.assertTrue(target.exists())
 
-    def test_full_agent_defaults_removes_full_agent_files(self):
+    def test_connected_agent_defaults_removes_connected_agent_files(self):
         with tempfile.TemporaryDirectory() as tempdir:
             state_file = Path(tempdir) / "oauth-state.json"
             owner_file = Path(tempdir) / "oauth-owner-token"
             state_file.write_text("state", encoding="utf-8")
             owner_file.write_text("owner", encoding="utf-8")
-            with mock.patch.object(reset_auth, "DEFAULT_FULL_AGENT_STATE_FILE", state_file):
+            with mock.patch.object(reset_auth, "DEFAULT_CONNECTED_AGENT_STATE_FILE", state_file):
                 with mock.patch.object(
                     reset_auth,
-                    "DEFAULT_FULL_AGENT_OWNER_TOKEN_FILE",
+                    "DEFAULT_CONNECTED_AGENT_OWNER_TOKEN_FILE",
+                    owner_file,
+                ):
+                    reset_auth.main(["--connected-agent-defaults"])
+
+            self.assertFalse(state_file.exists())
+            self.assertFalse(owner_file.exists())
+
+    def test_legacy_full_agent_defaults_flag_still_works(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            state_file = Path(tempdir) / "oauth-state.json"
+            owner_file = Path(tempdir) / "oauth-owner-token"
+            state_file.write_text("state", encoding="utf-8")
+            owner_file.write_text("owner", encoding="utf-8")
+            with mock.patch.object(reset_auth, "DEFAULT_CONNECTED_AGENT_STATE_FILE", state_file):
+                with mock.patch.object(
+                    reset_auth,
+                    "DEFAULT_CONNECTED_AGENT_OWNER_TOKEN_FILE",
                     owner_file,
                 ):
                     reset_auth.main(["--full-agent-defaults"])

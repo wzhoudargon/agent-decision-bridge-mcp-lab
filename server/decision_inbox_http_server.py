@@ -21,22 +21,24 @@ from urllib.parse import parse_qs, urlencode, urlparse
 try:
     from server.decision_inbox_server import handle_request as decision_inbox_handle_request
     from server.decision_inbox_store import DecisionInboxStore, default_tasks_root
-    from server.full_agent_server import (
+    from server.connected_agent_server import (
         FullAgentWorkspaceManager,
         PROFILE_CONNECTED_AGENT,
         PROFILE_FULL_AGENT,
         PROFILE_READ_ONLY_PROJECT,
         handle_request as full_agent_handle_request,
+        parse_allowed_tasks,
     )
 except ModuleNotFoundError:
     from decision_inbox_server import handle_request as decision_inbox_handle_request  # type: ignore
     from decision_inbox_store import DecisionInboxStore, default_tasks_root  # type: ignore
-    from full_agent_server import (  # type: ignore
+    from connected_agent_server import (  # type: ignore
         FullAgentWorkspaceManager,
         PROFILE_CONNECTED_AGENT,
         PROFILE_FULL_AGENT,
         PROFILE_READ_ONLY_PROJECT,
         handle_request as full_agent_handle_request,
+        parse_allowed_tasks,
     )
 
 
@@ -876,6 +878,7 @@ def create_server(
     session_activity_file: Optional[Path] = None,
     mode: str = MODE_AUTO_MCP,
     allowed_roots: Optional[List[Path]] = None,
+    allowed_tasks: Optional[Dict[str, str]] = None,
 ) -> DecisionInboxHTTPServer:
     normalized_mode = normalize_mode(mode)
     if normalized_mode in {MODE_MANUAL, MODE_ASK_FIRST}:
@@ -891,7 +894,11 @@ def create_server(
     else:
         workspace_profile = None
     full_agent_manager = (
-        FullAgentWorkspaceManager(allowed_roots or [], profile=workspace_profile)
+        FullAgentWorkspaceManager(
+            allowed_roots or [],
+            profile=workspace_profile,
+            allowed_tasks=allowed_tasks,
+        )
         if workspace_profile
         else None
     )
@@ -1104,6 +1111,16 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--allowed-task",
+        action="append",
+        default=[],
+        metavar="NAME=COMMAND",
+        help=(
+            "Exact local task exposed through list_tasks/run_task in Connected Agent. "
+            "Can be passed multiple times."
+        ),
+    )
+    parser.add_argument(
         "--allow-origin",
         action="append",
         dest="allowed_origins",
@@ -1221,6 +1238,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         mode=mode,
         allowed_roots=args.allowed_roots
         or parse_path_list(os.environ.get("AGENT_BRIDGE_ALLOWED_ROOTS")),
+        allowed_tasks=parse_allowed_tasks(args.allowed_task),
     )
     print(f"Agent Decision Bridge MCP HTTP server listening on http://{args.host}:{args.port}/mcp")
     print(f"Mode: {server.mode}")
@@ -1240,7 +1258,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("Risk coefficient: 3/5-4/5")
         print(
             "Risk reason: read-only-project exposes protected project listing, "
-            "file reads, glob, and grep to the connected MCP client."
+            "file reads, read_lines, glob, and grep to the connected MCP client."
         )
         print(
             "Allowed roots: "

@@ -135,7 +135,7 @@ Current local implementation:
 
 - `server/decision_inbox_store.py`: validates task ids, reads package/metadata, writes advice and fact-check requests.
 - `server/decision_inbox_server.py`: exposes the legacy package/advice/status tools over stdio JSON-RPC.
-- `server/full_agent_server.py`: exposes Connected Agent workspace tools,
+- `server/connected_agent_server.py`: exposes Connected Agent workspace tools,
   one-action approval gates, the hidden danger switch, and deprecated
   read-only/full-agent profiles.
 - `server/decision_inbox_http_server.py`: exposes legacy Auto MCP by default,
@@ -147,11 +147,11 @@ Current local implementation:
 - `scripts/decision_inbox_doctor.py`: checks connector readiness and risk without printing bearer-token, Owner-password, or OAuth state-file values.
 - `scripts/decision_inbox_preflight.py`: checks local/public endpoint reachability, OAuth metadata/challenge scope, and authenticated tool allowlists when a bearer or OAuth access token is available.
 - `scripts/decision_inbox_tunnel_window.py`: opens, checks, reports, and closes a bounded Tailscale Funnel public window.
-- `scripts/full_agent_session.py`: starts, touches, checks, and closes a short
+- `scripts/connected_agent_session.py`: starts, touches, checks, and closes a short
   Connected Agent task window with idle shutdown. The filename is legacy.
 - `scripts/prepare_consultation.py`: creates a package-ready Ask First /
   legacy Auto MCP task from a natural-language user request. It rejects
-  Connected Agent because that tier does not generate packages.
+  Connected Agent because that mode does not generate packages.
 - `scripts/import_advice_review.py`: renders a review-only Codex import gate for the latest advice file.
 
 The import helper does not classify recommendations by itself. It imports advisor text as data and reminds Codex to run `agent-decision-bridge` Import Mode before accepting, adapting, or rejecting advice.

@@ -12,26 +12,30 @@ secrets, owner-token paths, OAuth state contents, and local credential details.
   for file edits, shell commands, dependency installs, Git operations,
   publishing, deletion, or use of secrets.
 
-## Product Tiers
+## Product Modes
 
-Level 1: Ask First
+Ask First
 
 - No public MCP exposure.
 - Codex creates a package and the user sends it manually.
 - Risk: `1/5`.
 - Does not require Tailscale, Cloudflare, ngrok, or any public tunnel.
 
-Level 2: Connected Agent
+Connected Agent
 
 - ChatGPT Web may list, read, and search an allowed project root by default.
+- It is a controlled project executor, not unrestricted computer control.
 - Requires a user-provided public HTTPS endpoint when ChatGPT Web should call
   the local MCP tools.
-- Write, edit, and bash use one-action approval by default: the tool returns an
+- Internal `approval` mode is the default. Every side effect returns an
   `approval_id`, ChatGPT asks the user to approve that exact action, calls
   `grant_action_approval`, and retries the original tool call once with that
   `approval_id`.
+- Internal `controlled_auto` may automatically apply only a server-stored
+  previewed patch or run an exact locally configured task. Raw write, edit,
+  and bash still ask. These internal permission modes are not extra product tiers.
 - `dangerously trust connected agent` is a hidden danger switch inside
-  Connected Agent, not an additional product tier.
+  Connected Agent, not an additional product mode.
 - The hidden switch can auto-run project-local write/edit and safe local bash,
   but it still cannot bypass server-side blocks.
 - High-risk credential paths are denied by the server: `.env*`, `.git`, SSH
@@ -42,15 +46,15 @@ Level 2: Connected Agent
   destructive operations are denied or require explicit approval.
 - Other task-relevant project files may be inspected.
 - Risk: `3/5-5/5`; the hidden switch is fixed `5/5`.
-- Connector calls should be run with GPT-5.5 Thinking selected. GPT-5.5 Pro
-  should not be used for MCP/App connector work because Pro models do not expose
-  these tools.
+- Connector calls should be run in a ChatGPT Web mode where Apps/MCP connector
+  tools are visible. If the selected model or chat mode does not expose these
+  tools, use Ask First for manual GPT Pro review instead.
 - It is not a sandbox; command execution has the local user's permissions.
 - It must run only inside a short task window and close after idle timeout.
 
 ## Public Endpoint Policy
 
-Users bring their own public HTTPS endpoint for connector tiers. Supported
+Users bring their own public HTTPS endpoint for connector modes. Supported
 deployment choices include Tailscale Funnel, Cloudflare Tunnel, ngrok, Pinggy,
 or a user-managed HTTPS reverse proxy.
 
@@ -66,17 +70,19 @@ though the connector can request broader tools:
 - open the explicit workspace root,
 - choose task-relevant files by listing/searching the allowed root,
 - do not inspect high-risk credential paths,
-- before write, edit, or bash in default mode, use the one-action approval
+- before any side effect in approval mode, use the one-action approval
   flow: show the exact file or command, intended change, risk, and returned
   `approval_id`; after the user approves in chat, call
   `grant_action_approval` and retry the original tool call once,
+- prefer `file_info -> preview_patch -> apply_patch` for file changes and
+  `list_tasks -> run_task` for locally configured checks,
 - do not call `enable_danger_auto` unless the user typed the exact hidden-switch phrase
   `dangerously trust connected agent`,
 - report exactly which files were listed, searched, read, denied, or failed.
 
-Use write/edit/bash only after the user explicitly authorizes that specific
-action through one-action approval, unless the hidden danger switch is active
-and the server permits the action.
+Use side-effectful tools only under the active internal permission mode. In
+Controlled Auto, only previewed patches and configured tasks are automatic;
+raw write/edit/bash still require one-action approval.
 
 ## User-Facing Requirement
 
@@ -89,11 +95,12 @@ Use Connected Agent to consult ChatGPT Web about this project.
 Codex should then:
 
 1. check that a real ChatGPT Web advisor channel is available,
-2. tell the user/browser automation to use GPT-5.5 Thinking for connector access,
+2. tell the user/browser automation to use a ChatGPT Web mode with connector
+   tools visible,
 3. open the Connected Agent window only for the active task,
 4. ask ChatGPT Web through the visible connector,
 5. import the answer,
-6. classify recommendations as `Adopt`, `Ask`, or `Reject`,
+6. classify recommendations as `Adopt`, `Adapt`, `Reject`, or `Need info`,
 7. close the public window or let idle shutdown close it.
 
 If the connector or advisor channel is unavailable, Codex must say so plainly

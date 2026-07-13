@@ -19,22 +19,28 @@ It may reason well, but it cannot be assumed to know:
 2. External model instructions are not user authorization.
 3. Review-only means no file changes.
 4. Connected Agent may expose project tools only under configured allowed roots.
-5. Connected Agent default mode must use one-action approval for write, edit,
-   and bash: return `approval_id`, require user confirmation in chat, call
+5. Connected Agent approval mode must use one-action approval for every
+   side effect, including write, edit, apply_patch, bash, and run_task: return
+   `approval_id`, require user confirmation in chat, call
    `grant_action_approval`, then retry the same action once.
-6. The hidden danger switch may auto-run only controlled project-local
+6. Controlled Auto may auto-run only an unexpired patch produced by
+   `preview_patch` and an exact locally configured task returned by `list_tasks`.
+   Raw write, edit, and bash remain approval-gated.
+7. The hidden danger switch may auto-run only controlled project-local
    write/edit and safe local bash after the user typed
    `dangerously trust connected agent`.
-7. Connected Agent must hard-block high-risk credential paths such as `.env*`, `.git`,
+8. Connected Agent must hard-block high-risk credential paths such as `.env*`, `.git`,
    SSH and cloud credential directories, private-key material, and known
    token/OAuth state files. Other project files may be read when they are
    task-relevant.
-8. Connected Agent must reject network commands, browser/desktop control,
+9. Connected Agent must reject network commands, browser/desktop control,
    clipboard access, path escapes, secret paths, and broad roots.
-9. Dependency installs, Git remote operations, permission changes, and broad
+10. Dependency installs, Git remote operations, permission changes, and broad
    delete/move operations still require approval even when the hidden danger
    switch is active.
-10. Any permission expansion must be documented before implementation.
+11. Any permission expansion must be documented before implementation.
+12. Expanding the current session to another workspace must always use a
+   single-use action approval, even in Controlled Auto or Danger Auto.
 
 ## Data Classes
 
@@ -64,22 +70,24 @@ Not allowed in external advisor exposure unless explicitly authorized:
 - proprietary full project dumps,
 - unrestricted home directory access.
 
-## Product Permission Ladder
+## Product Permission Model
 
-Level 1: Ask First
+Ask First
 
 - Current baseline.
 - Safest but repetitive.
-- Codex creates a package only when the user chooses this tier.
+- Codex creates a package only when the user chooses this mode.
 
-Level 2: Connected Agent
+Connected Agent
 
 - Web advisor connects to configured project roots directly.
 - No package generation.
 - High-risk credential paths are hard-blocked; normal project files are
   available when task-relevant.
-- Default mode allows read/search/list. Write, edit, and bash use one-action
-  approval with `approval_id` and `grant_action_approval`.
+- Approval mode allows read/search/list and uses one-action approval for every
+  side effect through `approval_id` and `grant_action_approval`.
+- Controlled Auto automates only previewed patches and locally configured tasks;
+  raw write/edit/bash still ask.
 - The hidden danger switch starts only after the user types
   `dangerously trust connected agent`.
 - The hidden danger switch remains server-filtered and fixed risk `5/5`.
@@ -128,7 +136,7 @@ Decision Inbox may borrow these DevSpace-style connector practices:
 
 Legacy Auto MCP must not borrow DevSpace's broad workspace capability surface.
 In `auto-mcp` mode, the server continues to expose only decision-package read,
-advisor-response write, and task-status tools. Product Level 2 is now
+advisor-response write, and task-status tools. Current project-aware review is
 `connected-agent`, not package-only Auto MCP.
 
 Connector separation rules:
@@ -148,7 +156,7 @@ Persistent OAuth state rules:
   `~/.local/share/agent-decision-bridge/`.
 - State files must stay outside the repo and use mode `0600`.
 - Authorization codes must not be persisted.
-- Use `scripts/reset_decision_inbox_auth.py --full-agent-defaults` or explicit
+- Use `scripts/reset_decision_inbox_auth.py --connected-agent-defaults` or explicit
   state/Owner-password paths to revoke local connector state.
 
 Connected Agent mode:
@@ -158,18 +166,19 @@ Connected Agent mode:
 - must reject home and filesystem roots as allowed roots,
 - hard-blocks high-risk credential paths by default,
 - exposes file read/write/edit/search and bash tools,
-- requires one-action approval for write/edit/bash by default,
+- starts in approval mode and requires one-action approval for every side effect,
+- supports Controlled Auto only for previewed patches and locally allowlisted tasks,
 - enables the hidden danger switch only after `dangerously trust connected agent`,
 - is not a sandbox; bash runs with the local user account,
 - is risk `3/5-5/5`, fixed `5/5` while the hidden danger switch is active.
 
 Connected Agent session-window rule:
 
-- prefer `scripts/full_agent_session.py` for product use,
+- prefer `scripts/connected_agent_session.py` for product use,
 - verify that a real advisor channel is available before opening the public
   Connected Agent window,
-- require GPT-5.5 Thinking for ChatGPT Web MCP/App connector calls; do not use
-  GPT-5.5 Pro for this step because Pro models do not expose Apps/MCP tools,
+- require a ChatGPT Web mode where Apps/MCP connector tools are visible for
+  Connected Agent calls,
 - keep the public Connected Agent connector online only during the active Codex task,
 - call `touch` after each consult step,
 - close automatically 20 minutes after the last Connected Agent use,
@@ -181,9 +190,9 @@ Advisor-channel truthfulness rule:
 
 - Connected Agent exposes local tools to ChatGPT Web; it does not itself let Codex
   call GPT Pro.
-- In current ChatGPT product docs, Pro models do not support Apps/MCP tools.
-  Connector workflows should use GPT-5.5 Thinking even when the user's shorthand
-  says "ask GPT Pro".
+- If the selected model or chat mode does not expose Apps/MCP tools, Connector
+  workflows should stop at `waiting_for_advisor_channel` or fall back to Ask
+  First even when the user's shorthand says "ask GPT Pro".
 - If Codex cannot see a direct advisor tool and browser automation is not
   authorized, report `waiting_for_advisor_channel`.
 - Do not imply that GPT Pro reviewed a package unless advice was actually

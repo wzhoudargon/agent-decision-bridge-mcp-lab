@@ -98,6 +98,11 @@ class DecisionInboxPreflightTests(unittest.TestCase):
     def test_connected_agent_expected_scope_and_tools(self):
         self.assertEqual(preflight.expected_oauth_scope("connected-agent"), "connected-agent")
         self.assertEqual(preflight.risk_coefficient("connected-agent"), "3-5")
+        self.assertEqual(
+            preflight.expected_tool_names("connected-agent")[0],
+            "open_default_workspace",
+        )
+        self.assertIn("read_lines", preflight.expected_tool_names("connected-agent"))
         self.assertIn("enable_danger_auto", preflight.expected_tool_names("connected-agent"))
         self.assertIn("grant_action_approval", preflight.expected_tool_names("connected-agent"))
         self.assertIn("grant_workspace_access", preflight.expected_tool_names("connected-agent"))

@@ -11,12 +11,13 @@ Use Connected Agent to consult ChatGPT Web about whether this skill is good enou
 
 The skill should behave like a conversation product:
 
-1. understand the requested product tier,
+1. understand the requested product mode,
 2. prepare the right decision context,
 3. open only the minimum required connector window,
 4. ask the advisor through an actually available channel,
 5. import the result,
-6. classify material recommendations as `Adopt`, `Ask`, or `Reject`,
+6. classify material recommendations as `Adopt`, `Adapt`, `Reject`, or
+   `Need info`,
 7. close public windows after the task or idle timeout.
 
 It must not pretend that an advisor was called when the advisor channel is not
@@ -75,43 +76,67 @@ If no advisor channel is available, Codex must say so and stop at
 - Codex cannot see a usable advisor channel.
 - Codex must not claim the consultation has happened.
 
-## Tier Behavior
+## Mode Behavior
 
-Level 1: Ask First
+Ask First
 
 - Create or summarize a self-contained package.
+- Explicit first-tier wording such as `第一档`, `调用第一档`, or `Ask First`
+  maps here. A request to consult GPT Pro without project inspection or
+  connector access also defaults here.
 - No public connector.
 - Risk `1/5`.
 - User manually sends package and returns advice.
+- `package_ready`, `manual_package_available`, and
+  `consultation_package_ready` mean the package is ready, not that the advisor
+  has already reviewed it.
 
-Level 2: Connected Agent
+Connected Agent
 
 - Do not create a decision package.
 - Use `--mode connected-agent`.
 - Let ChatGPT Web directly list/read/search allowed project content by default.
-- Tools include `open_workspace`, `ls`, `read`, `write`, `edit`, `grep`,
-  `glob`, `bash`, `enable_danger_auto`, `danger_auto_status`,
-  `disable_danger_auto`, `grant_action_approval`, `request_workspace_access`, and
-  `grant_workspace_access`.
+- Tool contract `2.0` is derived from the live server schema. It includes the
+  deterministic open/read/search tools, metadata and previewed-patch tools,
+  locally allowlisted task tools, raw write/edit/bash, internal permission
+  controls, Danger Auto controls, and action/workspace approvals.
+- Workspace opening is deterministic, not a user choice. When
+  `open_default_workspace` is visible, ChatGPT calls it with no arguments. If
+  the visible connector schema lacks that tool but exposes `open_workspace`,
+  ChatGPT must call `open_workspace` exactly once with path `"default"`.
+- The `"default"` alias is the required legacy-schema compatibility path. Its
+  use needs neither a local absolute path nor an extra user confirmation.
+  Absence of `open_default_workspace` alone is not evidence that the server
+  needs modification. Report failure only after the applicable visible entry
+  point returns an error, and verify that the returned root matches the
+  currently authorized workspace.
 - High-risk credential paths are blocked by the server; other task-relevant
   project files may be inspected.
-- Write, edit, and bash use one-action approval by default: the tool returns
-  `approval_id`, ChatGPT asks the user to approve that exact action, calls
+- Whole-file `read` is for task-relevant UTF-8 files up to 1 MB; larger source
+  files should use targeted `grep` plus bounded `read_lines` ranges. Default
+  prompts should skip `node_modules`, build outputs, sourcemaps, image
+  galleries, and dependency artifacts unless the task explicitly requires them.
+- Connected Agent starts in internal `approval` mode. Every side effect returns
+  `approval_id`; ChatGPT asks the user to approve that exact action, calls
   `grant_action_approval`, and retries the same tool call once with that
   `approval_id`.
+- `controlled_auto` is the recommended internal mode for continued execution:
+  it may apply only a stored `preview_patch` and run only a task returned by
+  `list_tasks`; raw write/edit/bash remain approval-gated.
 - `dangerously trust connected agent` is a hidden danger switch inside
-  Connected Agent, not an additional product tier.
+  Connected Agent, not an additional product mode.
 - The hidden switch starts only after the user types that exact phrase in
   ChatGPT Web.
 - When the hidden switch is active, safe project-local write/edit and safe
   local bash may run automatically; network, browser/desktop, clipboard,
-  secret-path, path escape, dependency install, Git remote, and broad
-  destructive command classes are blocked or require approval.
+  secret-path, and path escape remain hard-blocked; dependency install, Git
+  remote, and broad destructive command classes remain separately
+  approval-gated.
 - Risk `3/5-5/5`; the hidden switch is fixed `5/5`.
 - If advisor channel is unavailable, wait for `user-web` or browser automation
   authorization.
 
-Legacy Full-Agent or high-risk connector wording maps to Connected Agent in V1.1 unless the
+Legacy Full-Agent or high-risk connector wording maps to Connected Agent unless the
 user explicitly asks to test the deprecated `full-agent` alias.
 
 ## Connected Agent Health Gate
@@ -154,24 +179,24 @@ When the user or browser automation brings the ChatGPT Web answer back, capture
 it before local review:
 
 ```bash
-python3 scripts/level3_consultation_flow.py capture \
+python3 scripts/connected_agent_flow.py capture \
   --advisor chatgpt-web-connected-agent \
   "<original Connected Agent question>"
 ```
 
-This stores the answer under `decision-inbox/level3-consultations/` and renders
-a review-only gate. It does not execute advisor instructions. The `capture`
-action refreshes the idle timer after saving the advice; the session remains
-open until 20 minutes after the last Connected Agent use by default.
+This stores the answer as Connected Agent review data and renders a review-only
+gate. It does not execute advisor instructions. The `capture` action refreshes
+the idle timer after saving the advice; the session remains open until 20
+minutes after the last Connected Agent use by default.
 
 ## Local Helper
 
-Use package preparation only for Level 1 or legacy package-only Auto MCP:
+Use package preparation only for Ask First or legacy package-only Auto MCP:
 
 ```bash
 python3 scripts/prepare_consultation.py \
   --mode ask-first \
-  --advisor-channel unknown \
+  --advisor-channel manual \
   "Review whether this skill is ready and what to optimize next."
 ```
 
@@ -200,22 +225,15 @@ If the gate returns `waiting_for_advisor_channel`, do not open the public MCP
 window yet. Restore ChatGPT Web, wait for the user to trigger `user-web`, or
 fall back to Ask First.
 
-For Connected Agent user-facing status, prefer the combined readiness command:
-
-```bash
-python3 scripts/level3_status.py \
-  --advisor-channel browser-automation \
-  --advisor-health needs-browser-restart
-```
-
-This command does not open Connected Agent. It reports the product readiness
-gate, current session state, and current Tailscale Funnel state together.
+For Connected Agent user-facing status, report the product readiness gate,
+current session state, and current Tailscale Funnel state together. The status
+check must not open Connected Agent.
 
 For the normal user-facing Connected Agent consultation path, prefer the bounded flow
 wrapper:
 
 ```bash
-python3 scripts/level3_consultation_flow.py prepare \
+python3 scripts/connected_agent_flow.py prepare \
   --allowed-root "$PWD" \
   --public-base-url "https://your-public-host.example.com" \
   --advisor-channel user-web \
@@ -228,38 +246,54 @@ health checks, copies the compact ChatGPT Web prompt, and refuses to continue
 if the public health result is not `stable`. It no longer assumes browser
 automation is ready by default; Codex must explicitly pass `user-web`,
 `browser-automation`, or `direct-tool` with `advisor-health=ready` before the
-`5/5` window opens. The default timing is conservative for Tailscale Funnel task
-windows: 30 second public warmup, 30 second preflight timeout, six open-time
-preflight attempts, and five public-health probes. If the first public health
-result is `intermittent`, the wrapper runs one extra full health check before
-giving up; `failed` still closes immediately. After advice returns, use the
-same wrapper to capture the answer and refresh the 20-minute idle window:
+Connected Agent window opens.
+
+The product default is optimized for interactive use:
+
+```text
+--speed fast --output compact
+```
+
+Fast mode uses a short public warmup, two open-time preflight attempts, one
+public-health probe, and a compact status card. Use the conservative verification
+profile only when debugging connector stability or proving a public tunnel:
+
+```text
+--speed safe --output verbose
+```
+
+Safe mode keeps the older 30 second public warmup, 30 second preflight timeout,
+six open-time preflight attempts, five public-health probes, and one
+intermittent-health recovery check. After advice returns, use the same wrapper
+to capture the answer and refresh the 20-minute idle window:
 
 ```bash
-python3 scripts/level3_consultation_flow.py capture \
+python3 scripts/connected_agent_flow.py capture \
   --advisor chatgpt-web-connected-agent \
   "<original Connected Agent question>"
 ```
 
-Use `python3 scripts/level3_consultation_flow.py close` only when stopping
+Use `python3 scripts/connected_agent_flow.py close` only when stopping
 before advice has been captured or when the user explicitly wants immediate
 shutdown.
 
-For the ChatGPT Web prompt after the connector chip is visible, prefer:
+For the ChatGPT Web prompt after the connector chip is visible, prefer the
+product wrapper:
 
 ```bash
-python3 scripts/level3_consultation_prompt.py \
+python3 scripts/connected_agent_flow.py prepare \
   --allowed-root "$PWD" \
-  --clipboard \
+  --advisor-channel user-web \
+  --advisor-health ready \
   "Review whether this project is ready for Connected Agent use."
 ```
 
-The generated prompt tells ChatGPT to use GPT-5.5 Thinking rather than
-GPT-5.5 Pro for connector access, use only the Connected Agent connector, avoid
-Python/browser file checks, inspect before acting, use one-action approval for
-write/edit/bash, choose task-relevant project files under the allowed root,
-avoid high-risk credential paths, and report
-`Adopt`, `Ask`, and `Reject` recommendations. Use `--deep` or explicit `--file`
+The generated prompt tells ChatGPT to use a chat mode where Apps/MCP connector
+tools are visible, use only the Connected Agent connector, avoid Python/browser
+file checks, inspect before acting, use one-action approval for write/edit/bash,
+choose task-relevant project files under the allowed root, avoid high-risk
+credential paths, and report
+`Adopt`, `Adapt`, `Reject`, and `Need info` recommendations. Use `--deep` or explicit `--file`
 only for a targeted fixed-file round. The `--clipboard` flag copies the prompt
 locally so browser automation or the user can paste it into ChatGPT without
 manually selecting terminal output.
@@ -272,15 +306,15 @@ window and report `waiting_for_advisor_channel`.
 For ordinary users, the expected handoff text is:
 
 ```text
-Open ChatGPT Web with GPT-5.5 Thinking selected and the Connected Agent connector attached.
+Open ChatGPT Web with a tool-capable chat mode selected and the Connected Agent connector attached.
 Paste and send the copied prompt.
 When ChatGPT finishes, paste the answer back into Codex.
-Codex will classify the advice as Adopt / Ask / Reject.
+Codex will classify the advice as Adopt / Adapt / Reject / Need info.
 ```
 
 Codex should then capture the pasted answer with
-`scripts/level3_consultation_flow.py capture` before doing the local
-Adopt / Ask / Reject review.
+`scripts/connected_agent_flow.py capture` before doing the local
+Adopt / Adapt / Reject / Need info review.
 
 ## Failure Wording
 

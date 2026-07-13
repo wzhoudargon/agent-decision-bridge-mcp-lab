@@ -7,7 +7,7 @@ Current local file:
 - `restricted_test_workspace_server.py`: a minimal stdio JSON-RPC MCP server for Phase 1 synthetic workspace access testing.
 - `decision_inbox_store.py`: file-backed Decision Inbox storage with task id validation and restricted writes.
 - `decision_inbox_server.py`: legacy package/advice/status server over stdio JSON-RPC.
-- `full_agent_server.py`: workspace MCP backend with connected-agent, read-only-project, and full-agent profiles.
+- `connected_agent_server.py`: workspace MCP backend with connected-agent, read-only-project, and full-agent compatibility profiles.
 - `decision_inbox_http_server.py`: Streamable HTTP `/mcp` wrapper with mode selection, OAuth Owner password auth, optional/default OAuth state persistence by mode, bearer-token compatibility auth, Origin checks, Host allowlisting, and optional public base URL configuration.
 
 ## v1 Scope
@@ -148,12 +148,19 @@ python3 server/decision_inbox_http_server.py \
   --oauth-owner-token-file /tmp/decision-inbox-oauth-owner-token
 ```
 
-Expected tools: `open_workspace`, `ls`, `read`, `write`, `edit`, `grep`,
-`glob`, `bash`, `enable_danger_auto`, `danger_auto_status`,
-`disable_danger_auto`, `request_workspace_access`, and
-`grant_workspace_access`. This mode does not generate or serve a decision
-package. Write/edit/bash require approval by default. Danger Auto starts only
-after `dangerously trust connected agent`.
+Expected tools: `open_default_workspace`, `open_workspace`, `ls`, `read`,
+`read_lines`, `write`, `edit`, `grep`, `glob`, `bash`, `enable_danger_auto`,
+`danger_auto_status`, `disable_danger_auto`, `request_workspace_access`, and
+`grant_workspace_access`. Prefer `open_default_workspace` when exactly one
+allowed root is configured so the web advisor does not need to pass a local
+absolute path. If ChatGPT Web still exposes a stale schema without
+`open_default_workspace`, call `open_workspace` with path exactly `"default"`
+as the no-local-path compatibility alias. This mode does not generate or serve
+a decision package. Whole-file `read` accepts normal task-relevant UTF-8 files
+up to 1 MB; larger source files should use targeted `grep` and bounded
+`read_lines` ranges.
+Write/edit/bash require approval by default. Danger Auto starts only after
+`dangerously trust connected agent`.
 
 For tunnel/reverse-proxy runs, provide the public origin without `/mcp`:
 
@@ -242,7 +249,7 @@ Use `--oauth-state-file none` to disable Connected Agent OAuth persistence. To r
 the default Connected Agent auth files:
 
 ```bash
-python3 scripts/reset_decision_inbox_auth.py --full-agent-defaults
+python3 scripts/reset_decision_inbox_auth.py --connected-agent-defaults
 ```
 
 Risk coefficient for Connected Agent is `3/5-5/5`; Danger Auto is fixed `5/5`.

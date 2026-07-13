@@ -72,6 +72,7 @@ class ConversationProductGateTests(unittest.TestCase):
         self.assertEqual(result["exit_code"], 0)
         self.assertIn("Current state: manual_package_available", result["message"])
         self.assertIn("Risk if opened: 1/5", result["message"])
+        self.assertIn("GPT Pro has not been consulted yet", result["message"])
 
 
 if __name__ == "__main__":
