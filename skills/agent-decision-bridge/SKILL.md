@@ -5,6 +5,16 @@ description: Use when the user wants Codex to collaborate with another AI model,
 
 # Agent Decision Bridge
 
+## Release Identity
+
+- Skill release: `1.0.0`
+- Connected Agent server: `0.4.2`
+- Connector tool contract: `2.1`
+
+These identifiers evolve independently. Use the Skill release when referring to
+this reusable Codex workflow, the server version when diagnosing the MCP
+backend, and the contract version when checking the connector's tool set.
+
 ## Purpose
 
 Let Codex obtain a second opinion without giving an external model unchecked

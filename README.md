@@ -8,6 +8,17 @@ It is designed for users who want a stronger second opinion on project
 architecture, product plans, content outlines, or code changes without turning a
 web model into unchecked local authority.
 
+## Version Identity
+
+| Component | Current version | Meaning |
+|---|---:|---|
+| Agent Decision Bridge Skill | `1.0.0` | Reusable Codex workflow release |
+| Connected Agent server | `0.4.2` | MCP backend implementation |
+| Connector tool contract | `2.1` | Required 25-tool connector interface |
+
+These versions evolve independently. A Skill release does not rename the server
+or connector contract version.
+
 ## Modes
 
 | Mode | Best for | Connector exposure | Default risk |
