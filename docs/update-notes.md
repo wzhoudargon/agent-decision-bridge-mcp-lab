@@ -1,5 +1,22 @@
 # Update Notes
 
+## 2026-07-14: Skill 1.0.0 Release Identity
+
+### What Changed
+
+- Declared `agent-decision-bridge` Skill release `1.0.0` in the reusable Skill
+  and public project documentation.
+- Kept the independently versioned Connected Agent server at `0.4.2` and the
+  25-tool connector contract at `2.1`.
+- Added an explicit version identity table so Skill, server, and connector
+  contract releases are not confused with one another.
+
+### Validation
+
+- Runtime and repository Skill copies are byte-identical.
+- Skill structure validation passes without adding unsupported YAML frontmatter.
+- Existing server and contract version assertions remain unchanged.
+
 ## 2026-07-13: Token-Only Prepared Action Commits
 
 ### What Changed
